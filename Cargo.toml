@@ -1,7 +1,7 @@
 [package]
 name = "avantis-rust-utilities"
 description = "Swiss army knife utilities for all kind of Avantis rust projects"
-authors = ["Avantis - Genesis"]
+authors = ["Avantis - Genesis <it-be-avantis@ava.fund>"]
 homepage = "https://github.com/ava-global/avantis-rust-utilities"
 repository = "https://github.com/ava-global/avantis-rust-utilities"
 license = "MIT"
