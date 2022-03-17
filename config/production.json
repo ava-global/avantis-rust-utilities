@@ -1,0 +1,7 @@
+{
+  "db": {
+    "host": "localhost",
+    "user": "username",
+    "password": "REPLACE_ME"
+  }
+}
