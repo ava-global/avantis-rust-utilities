@@ -1,8 +1,14 @@
 [package]
 name = "avantis-rust-utilities"
+description = "Swiss army knife utilities for all kind of Avantis rust projects"
 authors = ["Avantis - Genesis"]
+homepage = "https://github.com/ava-global/avantis-rust-utilities"
+repository = "https://github.com/ava-global/avantis-rust-utilities"
+license = "MIT"
 version = "0.1.0"
 edition = "2021"
+readme = "README.md"
+keywords = ["utility"]
 
 [lib]
 name = "avantis_utils"
