@@ -24,6 +24,8 @@
 //!
 //! [^1]: Any format listed in [config::FileFormat] can be used.
 
+use std::str::FromStr;
+
 use anyhow::anyhow;
 use anyhow::Result;
 use config::Config;
@@ -128,6 +130,40 @@ pub enum Environment {
     /// Production environment. Will use `config/production.[FORMAT]`.
     #[strum(serialize = "production")]
     Production,
+}
+
+impl Environment {
+    /// Load environment from default env `APP_ENVIRONMENT`. Return Result of Environment.
+    /// If env `APP_ENVIRONMENT` is not set, return `Ok(Environment::Local)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use avantis_utils::config::Environment;
+    /// # std::env::set_var("APP_ENVIRONMENT", "development");
+    /// let environment = Environment::from_env().unwrap();
+    /// ```
+    pub fn from_env() -> Result<Self> {
+        Self::from_custom_env("APP_ENVIRONMENT")
+    }
+
+    /// Load environment from given env. Return Result of Environment.
+    /// If env `APP_ENVIRONMENT` is not set, return `Ok(Environment::Local)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use avantis_utils::config::Environment;
+    /// # std::env::set_var("CUSTOM_ENVIRONMENT", "development");
+    /// let environment = Environment::from_custom_env("CUSTOM_ENVIRONMENT").unwrap();
+    /// ```
+    pub fn from_custom_env(key: &str) -> Result<Self> {
+        let env = std::env::var(key);
+
+        Ok(Environment::from_str(
+            env.as_ref().map(String::as_ref).unwrap_or("local"),
+        )?)
+    }
 }
 
 #[cfg(test)]

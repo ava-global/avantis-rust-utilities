@@ -22,9 +22,17 @@ fn main() {
     println!("{:#?}", MyConfig::load_default(Environment::Test));
     println!("{:#?}", MyConfig::load_default(Environment::Production));
 
-    std::env::remove_var("APP__DB__PASSWORD");
+    // Works with environment selected from env too.
+    std::env::set_var("APP_ENVIRONMENT", "development");
+    println!(
+        "{:#?}",
+        MyConfig::load_default(Environment::from_env().unwrap())
+    );
 
     setup_db();
+
+    std::env::remove_var("APP__DB__PASSWORD");
+    std::env::remove_var("APP_ENVIRONMENT");
 }
 
 fn setup_db() {
