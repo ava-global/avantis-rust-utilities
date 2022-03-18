@@ -1,3 +1,29 @@
+//! A simple config module wrapping over [config::Config] module.
+//!
+//! At Avantis, we support environment config file system for most configurations
+//! include settings (ex. `DEBUG=true`) and data access (ie. database or API endpoints).
+//! We also support overriding mechanism via environment variables for credentials
+//! (ie. usernames, passwords, API keys). This keep credentials safe from accidentially
+//! upload to code repository and provide a single access point to credentials for easier
+//! rotation.
+//!
+//! For most projects, we recommend using [load_default_config] which take an [Environment]
+//! enum value, and return a config model struct.
+//!     
+//! 1. Create a base config file like `config/base.toml`[^1] to your project.
+//! 2. Create an environment config file like `config/development.toml` to your project.
+//! 3. Set env to replace credentials. Use `APP` for prefix and separator `__` for hierarchy.
+//!    For example, `APP__STOCK_DB__PASSWORD` will replace config at field `stock_db.password`.
+//! 4. In your code, create a config struct which mirror configuration from earlier steps.
+//! 5. Call `load_default_config` with selected Environment into the struct from step 4.
+//!
+//! For example usage, see [here](https://github.com/ava-global/avantis-rust-utilities/blob/main/examples/config/main.rs)
+//! and its config files [here](https://github.com/ava-global/avantis-rust-utilities/tree/main/config).
+//!
+//! If you need to customize load mechanism, see [load_config] or maybe use [config::Config] directly instead.
+//!
+//! [^1]: Any format listed in [config::FileFormat] can be used.
+
 use anyhow::anyhow;
 use anyhow::Result;
 use config::Config;
@@ -8,6 +34,27 @@ use config::FileSourceFile;
 use serde::Deserialize;
 use strum::EnumString;
 
+/// Load config from selected [Environment].
+/// Returns a Result containing config struct.
+/// Convenience [load_config].
+///
+/// # Example
+///
+/// ```
+/// # use serde::Deserialize;
+/// # use avantis_utils::config::load_default_config;
+/// # use avantis_utils::config::Environment;
+/// #[derive(Clone, Debug, Deserialize, PartialEq)]
+/// struct MyConfig {
+///     log_level: String,
+/// }
+///
+/// fn main() {
+///     let config: MyConfig = load_default_config(Environment::Development).unwrap();
+///
+///     println!("{:?}", config);
+/// }
+/// ```
 pub fn load_default_config<'a, T: Deserialize<'a>>(environment: Environment) -> Result<T> {
     let base_config_file = File::with_name("config/base").required(true);
     let env_config_file =
@@ -18,6 +65,29 @@ pub fn load_default_config<'a, T: Deserialize<'a>>(environment: Environment) -> 
     load_config(base_config_file, env_config_file, custom_env_vars)
 }
 
+/// Load config from custom sources.
+/// Returns a Result containing config struct.
+///
+/// # Example
+///
+/// ```
+/// # use serde::Deserialize;
+/// # use avantis_utils::config::load_config;
+/// #[derive(Clone, Debug, Deserialize, PartialEq)]
+/// struct MyConfig {
+///     log_level: String,
+/// }
+///
+/// fn main() {
+///     let config: MyConfig = load_config(
+///         config::File::with_name("config/base"),
+///         config::File::with_name("config/test"),
+///         config::Environment::with_prefix("app").separator("__"),
+///     ).unwrap();
+///
+///     println!("{:?}", config);
+/// }
+/// ```
 pub fn load_config<'a, T: Deserialize<'a>>(
     base_config_file: File<FileSourceFile, FileFormat>,
     env_config_file: File<FileSourceFile, FileFormat>,
@@ -38,19 +108,26 @@ pub fn load_config<'a, T: Deserialize<'a>>(
         })?)
 }
 
+/// Application environment. Affect configuration file loaded by [load_default_config].
+///
+/// Any format listed in [config::FileFormat] can be used.
 #[derive(PartialEq, Debug, EnumString, strum::Display)]
 pub enum Environment {
+    /// Local environment. Will use `config/local.[FORMAT]`.
     #[strum(serialize = "local")]
     Local,
 
-    #[strum(serialize = "production")]
-    Production,
+    /// Test environment. Will use `config/test.[FORMAT]`.
+    #[strum(serialize = "test")]
+    Test,
 
+    /// Development environment. Will use `config/development.[FORMAT]`.
     #[strum(serialize = "development")]
     Development,
 
-    #[strum(serialize = "test")]
-    Test,
+    /// Production environment. Will use `config/production.[FORMAT]`.
+    #[strum(serialize = "production")]
+    Production,
 }
 
 #[cfg(test)]
