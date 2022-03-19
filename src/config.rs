@@ -7,7 +7,7 @@
 //! upload to code repository and provide a single access point to credentials for easier
 //! rotation.
 //!
-//! For most projects, we recommend using [load_default_config] which take an [Environment]
+//! For most projects, we recommend using [load_config] which take an [Environment]
 //! enum value, and return a config model struct.
 //!     
 //! 1. Create a base config file like `config/base.toml`[^1] to your project.
@@ -15,12 +15,12 @@
 //! 3. Set env to replace credentials. Use `APP` for prefix and separator `__` for hierarchy.
 //!    For example, `APP__STOCK_DB__PASSWORD` will replace config at field `stock_db.password`.
 //! 4. In your code, create a config struct which mirror configuration from earlier steps.
-//! 5. Call `load_default_config` with selected Environment into the struct from step 4.
+//! 5. Call `load_config` with selected Environment into the struct from step 4.
 //!
 //! For example usage, see [here](https://github.com/ava-global/avantis-rust-utilities/blob/main/examples/config/main.rs)
 //! and its config files [here](https://github.com/ava-global/avantis-rust-utilities/tree/main/config).
 //!
-//! If you need to customize load mechanism, see [load_config] or maybe use [config::Config] directly instead.
+//! If you need to customize load mechanism, see [load_custom_config] or maybe use [config::Config] directly instead.
 //!
 //! [^1]: Any format listed in [config::FileFormat] can be used.
 
@@ -38,13 +38,13 @@ use strum::EnumString;
 
 /// Load config from selected [Environment].
 /// Returns a Result containing config struct.
-/// Convenience [load_config].
+/// Convenience [load_custom_config].
 ///
 /// # Example
 ///
 /// ```
 /// # use serde::Deserialize;
-/// # use avantis_utils::config::load_default_config;
+/// # use avantis_utils::config::load_config;
 /// # use avantis_utils::config::Environment;
 /// #[derive(Clone, Debug, Deserialize, PartialEq)]
 /// struct MyConfig {
@@ -52,19 +52,19 @@ use strum::EnumString;
 /// }
 ///
 /// fn main() {
-///     let config: MyConfig = load_default_config(Environment::Development).unwrap();
+///     let config: MyConfig = load_config(Environment::Development).unwrap();
 ///
 ///     println!("{:?}", config);
 /// }
 /// ```
-pub fn load_default_config<'a, T: Deserialize<'a>>(environment: Environment) -> Result<T> {
+pub fn load_config<'a, T: Deserialize<'a>>(environment: Environment) -> Result<T> {
     let base_config_file = File::with_name("config/base").required(true);
     let env_config_file =
         File::with_name(&format!("config/{}", environment.to_string())).required(true);
 
     let custom_env_vars = EnvironmentVariables::with_prefix("app").separator("__");
 
-    load_config(base_config_file, env_config_file, custom_env_vars)
+    load_custom_config(base_config_file, env_config_file, custom_env_vars)
 }
 
 /// Load config from custom sources.
@@ -74,14 +74,14 @@ pub fn load_default_config<'a, T: Deserialize<'a>>(environment: Environment) -> 
 ///
 /// ```
 /// # use serde::Deserialize;
-/// # use avantis_utils::config::load_config;
+/// # use avantis_utils::config::load_custom_config;
 /// #[derive(Clone, Debug, Deserialize, PartialEq)]
 /// struct MyConfig {
 ///     log_level: String,
 /// }
 ///
 /// fn main() {
-///     let config: MyConfig = load_config(
+///     let config: MyConfig = load_custom_config(
 ///         config::File::with_name("config/base"),
 ///         config::File::with_name("config/test"),
 ///         config::Environment::with_prefix("app").separator("__"),
@@ -90,7 +90,7 @@ pub fn load_default_config<'a, T: Deserialize<'a>>(environment: Environment) -> 
 ///     println!("{:?}", config);
 /// }
 /// ```
-pub fn load_config<'a, T: Deserialize<'a>>(
+pub fn load_custom_config<'a, T: Deserialize<'a>>(
     base_config_file: File<FileSourceFile, FileFormat>,
     env_config_file: File<FileSourceFile, FileFormat>,
     custom_env_vars: EnvironmentVariables,
@@ -110,7 +110,7 @@ pub fn load_config<'a, T: Deserialize<'a>>(
         })?)
 }
 
-/// Application environment. Affect configuration file loaded by [load_default_config].
+/// Application environment. Affect configuration file loaded by [load_config].
 ///
 /// Any format listed in [config::FileFormat] can be used.
 #[derive(PartialEq, Debug, EnumString, strum::Display)]
@@ -196,7 +196,7 @@ mod tests {
             },
         };
 
-        let actual = load_config::<MyConfig>(
+        let actual = load_custom_config::<MyConfig>(
             File::with_name("config/base").required(true),
             File::with_name("config/development").required(true),
             EnvironmentVariables::with_prefix("app").separator("__"),
@@ -205,15 +205,15 @@ mod tests {
 
         assert_eq!(expected, actual);
 
-        let actual = load_default_config::<MyConfig>(Environment::Development).unwrap();
+        let actual = load_config::<MyConfig>(Environment::Development).unwrap();
 
         assert_eq!(expected, actual);
 
-        let actual = load_default_config::<MyConfig>(Environment::Test).unwrap();
+        let actual = load_config::<MyConfig>(Environment::Test).unwrap();
 
         assert_eq!(expected, actual);
 
-        let actual = load_default_config::<MyConfig>(Environment::Production).unwrap();
+        let actual = load_config::<MyConfig>(Environment::Production).unwrap();
 
         assert_eq!(expected, actual);
 
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "configuration file \"config/unknown_env\" not found")]
     fn test_load_config_file_not_found() {
-        load_config::<MyConfig>(
+        load_custom_config::<MyConfig>(
             File::with_name("config/base").required(true),
             File::with_name("config/unknown_env").required(true),
             EnvironmentVariables::with_prefix("app").separator("__"),
@@ -236,7 +236,7 @@ mod tests {
         expected = "Unable to deserialize into config with type avantis_utils::config::tests::MyConfig with error: missing field"
     )]
     fn test_load_config_missing_fields() {
-        load_config::<MyConfig>(
+        load_custom_config::<MyConfig>(
             File::with_name("config/base").required(true),
             File::with_name("config/base").required(true),
             EnvironmentVariables::with_prefix("app").separator("__"),
