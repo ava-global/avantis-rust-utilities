@@ -57,7 +57,7 @@ use strum::EnumString;
 ///     println!("{:?}", config);
 /// }
 /// ```
-pub fn load_config<'a, T: Deserialize<'a>>(environment: Environment) -> Result<T> {
+pub fn load_config<'de, T: Deserialize<'de>>(environment: Environment) -> Result<T> {
     let base_config_file = File::with_name("config/base").required(true);
     let env_config_file =
         File::with_name(&format!("config/{}", environment.to_string())).required(true);
@@ -90,7 +90,7 @@ pub fn load_config<'a, T: Deserialize<'a>>(environment: Environment) -> Result<T
 ///     println!("{:?}", config);
 /// }
 /// ```
-pub fn load_custom_config<'a, T: Deserialize<'a>>(
+pub fn load_custom_config<'de, T: Deserialize<'de>>(
     base_config_file: File<FileSourceFile, FileFormat>,
     env_config_file: File<FileSourceFile, FileFormat>,
     custom_env_vars: EnvironmentVariables,
