@@ -134,7 +134,7 @@ pub enum Environment {
 
 impl Environment {
     /// Load environment from default env `APP_ENVIRONMENT`. Return Result of Environment.
-    /// If env `APP_ENVIRONMENT` is not set, return `Ok(Environment::Local)`.
+    /// If env `APP_ENVIRONMENT` is not set, return `Ok(Environment::default())`.
     ///
     /// # Example
     ///
@@ -148,7 +148,7 @@ impl Environment {
     }
 
     /// Load environment from given env. Return Result of Environment.
-    /// If env `APP_ENVIRONMENT` is not set, return `Ok(Environment::Local)`.
+    /// If env `APP_ENVIRONMENT` is not set, return `Ok(Environment::default())`.
     ///
     /// # Example
     ///
@@ -158,11 +158,22 @@ impl Environment {
     /// let environment = Environment::from_custom_env("CUSTOM_ENVIRONMENT").unwrap();
     /// ```
     pub fn from_custom_env(key: &str) -> Result<Self> {
-        let env = std::env::var(key);
+        std::env::var(key)
+            .map(|environment_string| {
+                Environment::from_str(&environment_string)
+                    .map_err(|_| anyhow!("Unknown environment: {environment_string}"))
+            })
+            .unwrap_or(Ok(Environment::default()))
+    }
+}
 
-        Ok(Environment::from_str(
-            env.as_ref().map(String::as_ref).unwrap_or("local"),
-        )?)
+impl Default for Environment {
+    fn default() -> Self {
+        if cfg!(test) {
+            Environment::Test
+        } else {
+            Environment::Local
+        }
     }
 }
 
@@ -221,11 +232,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "configuration file \"config/unknown_env\" not found")]
+    #[should_panic(expected = "configuration file \"config/staging\" not found")]
     fn test_load_config_file_not_found() {
         load_custom_config::<MyConfig>(
             File::with_name("config/base").required(true),
-            File::with_name("config/unknown_env").required(true),
+            File::with_name("config/staging").required(true),
             EnvironmentVariables::with_prefix("app").separator("__"),
         )
         .unwrap();
@@ -242,5 +253,38 @@ mod tests {
             EnvironmentVariables::with_prefix("app").separator("__"),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_environment_from_env() {
+        assert_eq!(Environment::Test, Environment::from_env().unwrap());
+
+        assert_eq!(
+            Environment::Test,
+            Environment::from_custom_env("APP_ENVIRONMENT").unwrap()
+        );
+
+        std::env::set_var("APP_ENVIRONMENT", "local");
+
+        assert_eq!(Environment::Local, Environment::from_env().unwrap());
+
+        assert_eq!(
+            Environment::Local,
+            Environment::from_custom_env("APP_ENVIRONMENT").unwrap()
+        );
+
+        std::env::remove_var("APP_ENVIRONMENT")
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown environment: staging")]
+    fn test_environment_from_unknown_env() {
+        std::env::set_var("APP_ENVIRONMENT_INVALID", "staging");
+
+        let result = Environment::from_custom_env("APP_ENVIRONMENT_INVALID");
+
+        std::env::remove_var("APP_ENVIRONMENT_INVALID");
+
+        result.unwrap();
     }
 }
