@@ -2,3 +2,5 @@
 
 #[cfg(feature = "cfg")]
 pub mod config;
+#[cfg(feature = "db")]
+pub mod db;

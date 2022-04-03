@@ -192,6 +192,8 @@ mod tests {
         host: String,
         user: String,
         password: String,
+        db_name: String,
+        max_connections: u32,
     }
 
     #[test]
@@ -204,6 +206,8 @@ mod tests {
                 host: "localhost".to_string(),
                 user: "username".to_string(),
                 password: "supersecurepassword".to_string(),
+                db_name: "my_db".to_string(),
+                max_connections: 30,
             },
         };
 

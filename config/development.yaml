@@ -2,3 +2,5 @@ db:
   host: localhost
   user: username
   password: REPLACE_ME
+  db_name: my_db
+  max_connections: 30
