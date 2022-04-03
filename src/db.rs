@@ -1,3 +1,8 @@
+//! Db module. include common [DatabaseConfig](crate::db::DatabaseConfig) designed
+//! to be use with Avantis [config](crate::config) module.
+//!
+//! By default, we use Postgres as our database at Avantis.
+
 use std::time::Duration;
 
 use serde::Deserialize;
