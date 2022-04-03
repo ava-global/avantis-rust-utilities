@@ -1,5 +1,5 @@
 [package]
-name = "avantis-rust-utilities"
+name = "avantis-utils"
 description = "Swiss army knife utilities for all kind of Avantis rust projects"
 authors = ["Avantis - Genesis <it-be-avantis@ava.fund>"]
 homepage = "https://github.com/ava-global/avantis-rust-utilities"
@@ -9,9 +9,6 @@ version = "0.1.3"
 edition = "2021"
 readme = "README.md"
 keywords = ["utility"]
-
-[lib]
-name = "avantis_utils"
 
 [dependencies]
 config = { version = "0.12", optional = true }
