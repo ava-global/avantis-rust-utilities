@@ -88,9 +88,15 @@ pub async fn get<T: FromRedisValue>(key: &str) -> anyhow::Result<Option<T>> {
     get_connection().await?.get(key).map_err(|err| err.into())
 }
 
+#[tracing::instrument(name = "redis::del")]
+#[cfg_attr(test, mockable)]
+pub async fn del(key: &str) -> anyhow::Result<()> {
+    get_connection().await?.del(key).map_err(|err| err.into())
+}
+
 #[tracing::instrument(name = "redis::set", skip_all)]
 #[cfg_attr(test, mockable)]
-pub async fn set<V>(key: &str, value: &V) -> anyhow::Result<()>
+pub async fn set<V>(key: &str, value: V) -> anyhow::Result<()>
 where
     V: ToRedisArgs + Send + Sync,
 {
@@ -196,7 +202,7 @@ where
         Ok(Some(bytes)) => {
             let (expire_time_bytes, rest) = bytes.split_at(std::mem::size_of::<u64>());
             let expire_time: u64 = u64::from_be_bytes(expire_time_bytes.try_into().unwrap());
-            if expire_time > now {
+            if now > expire_time {
                 let new_expires_time = now + expire_seconds;
                 let cache_key = cache_key.to_owned();
                 tokio::spawn(async move {
