@@ -4,7 +4,7 @@ use avantis_utils::config::Environment;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 
-static CONFIG: Lazy<MyConfig> = Lazy::new(|| MyConfig::load(Environment::Development).unwrap());
+static CONFIG: Lazy<MyConfig> = Lazy::new(|| MyConfig::load(Environment::Develop).unwrap());
 
 fn main() {
     // This is an example. DO NOT ACTUALLY SET YOUR PASSWORD IN YOUR CODEBASE.
@@ -13,16 +13,16 @@ fn main() {
 
     // This will load config from
     //   1. config/base
-    //   2. config/development
+    //   2. config/develop
     //   3. overriding env variables
-    println!("{:#?}", MyConfig::load(Environment::Development));
+    println!("{:#?}", MyConfig::load(Environment::Develop));
 
     // Works with different config file format like toml and json as well.
     println!("{:#?}", MyConfig::load(Environment::Test));
     println!("{:#?}", MyConfig::load(Environment::Production));
 
     // Works with environment selected from env too.
-    std::env::set_var("APP_ENVIRONMENT", "development");
+    std::env::set_var("APP_ENVIRONMENT", "develop");
     println!("{:#?}", MyConfig::load(Environment::from_env().unwrap()));
 
     setup_db();

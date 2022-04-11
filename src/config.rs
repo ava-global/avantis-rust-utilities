@@ -11,7 +11,7 @@
 //! enum value, and return a config model struct.
 //!     
 //! 1. Create a base config file like `config/base.toml`[^1] to your project.
-//! 2. Create an environment config file like `config/development.toml` to your project.
+//! 2. Create an environment config file like `config/develop.toml` to your project.
 //! 3. Set env to replace credentials. Use `APP` for prefix and separator `__` for hierarchy.
 //!    For example, `APP__STOCK_DB__PASSWORD` will replace config at field `stock_db.password`.
 //! 4. In your code, create a config struct which mirror configuration from earlier steps.
@@ -52,7 +52,7 @@ use strum::EnumString;
 /// }
 ///
 /// fn main() {
-///     let config: MyConfig = load_config(Environment::Development).unwrap();
+///     let config: MyConfig = load_config(Environment::Develop).unwrap();
 ///
 ///     println!("{:?}", config);
 /// }
@@ -123,8 +123,13 @@ pub enum Environment {
     #[strum(serialize = "test")]
     Test,
 
+    /// Develop environment. Will use `config/develop.[FORMAT]`.
+    #[strum(serialize = "develop")]
+    Develop,
+
     /// Development environment. Will use `config/development.[FORMAT]`.
     #[strum(serialize = "development")]
+    #[deprecated(since = "0.2.1", note = "please use `Develop` instead")]
     Development,
 
     /// Production environment. Will use `config/production.[FORMAT]`.
@@ -140,7 +145,7 @@ impl Environment {
     ///
     /// ```
     /// # use avantis_utils::config::Environment;
-    /// # std::env::set_var("APP_ENVIRONMENT", "development");
+    /// # std::env::set_var("APP_ENVIRONMENT", "develop");
     /// let environment = Environment::from_env().unwrap();
     /// ```
     pub fn from_env() -> Result<Self> {
@@ -154,7 +159,7 @@ impl Environment {
     ///
     /// ```
     /// # use avantis_utils::config::Environment;
-    /// # std::env::set_var("CUSTOM_ENVIRONMENT", "development");
+    /// # std::env::set_var("CUSTOM_ENVIRONMENT", "develop");
     /// let environment = Environment::from_custom_env("CUSTOM_ENVIRONMENT").unwrap();
     /// ```
     pub fn from_custom_env(key: &str) -> Result<Self> {
@@ -213,14 +218,14 @@ mod tests {
 
         let actual = load_custom_config::<MyConfig>(
             File::with_name("config/base").required(true),
-            File::with_name("config/development").required(true),
+            File::with_name("config/develop").required(true),
             EnvironmentVariables::with_prefix("app").separator("__"),
         )
         .unwrap();
 
         assert_eq!(expected, actual);
 
-        let actual = load_config::<MyConfig>(Environment::Development).unwrap();
+        let actual = load_config::<MyConfig>(Environment::Develop).unwrap();
 
         assert_eq!(expected, actual);
 
