@@ -14,14 +14,12 @@ use std::{
 
 use anyhow::anyhow;
 use anyhow::Result;
-use bb8_redis::bb8::{self, Pool, PooledConnection};
+use bb8_redis::bb8::{Pool, PooledConnection};
 
 use tokio::sync::OnceCell;
 use tracing::error;
 
 use redis::{Commands, FromRedisValue, ToRedisArgs};
-
-use crate::redis::RedisClusterConnectionManager;
 
 pub struct RedisClusterConnectionManager {
     client: ClusterClient,
@@ -152,7 +150,7 @@ async fn create_connection_pool(
         .await?)
 }
 
-#[tracing::instrument(name = "redis::get_or_set_with_expire")]
+#[tracing::instrument(name = "redis::get_or_set_with_expire", skip_all)]
 #[cfg_attr(test, mockable)]
 pub async fn get_or_set_with_expire<F, Fut, T>(
     cache_key: &str,
@@ -178,7 +176,7 @@ where
     }
 }
 
-#[tracing::instrument(name = "redis::get_or_set_in_background_with_expire")]
+#[tracing::instrument(name = "redis::get_or_set_in_background_with_expire", skip_all)]
 #[cfg_attr(test, mockable)]
 pub async fn get_or_set_in_background_with_expire<F, Fut>(
     cache_key: &str,
