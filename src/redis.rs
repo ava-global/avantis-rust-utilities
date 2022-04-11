@@ -19,7 +19,7 @@ use bb8_redis::bb8::{Pool, PooledConnection};
 use tokio::sync::OnceCell;
 use tracing::error;
 
-use redis::{Commands, FromRedisValue, ToRedisArgs};
+use redis::{from_redis_value, Commands, FromRedisValue, ToRedisArgs};
 
 pub struct RedisClusterConnectionManager {
     client: ClusterClient,
@@ -174,6 +174,92 @@ where
             let result = data_loader().await?;
             set_with_expire_seconds(&cache_key, &result, expire_seconds).await?;
             Ok(result)
+        }
+        Err(err) => {
+            error!("Failed to connect to redis: {}", err);
+            Ok(data_loader().await?)
+        }
+    }
+}
+
+struct ExpirableValue<T> {
+    actual: T,
+    expired_when: u64,
+}
+
+impl<T> ExpirableValue<T> {
+    fn is_expired(&self, now: u64) -> bool {
+        now > self.expired_when
+    }
+}
+
+impl<T: ToRedisArgs> ToRedisArgs for ExpirableValue<T> {
+    fn write_redis_args<W>(&self, out: &mut W)
+    where
+        W: ?Sized + redis::RedisWrite,
+    {
+        self.actual.write_redis_args(out);
+        self.expired_when.write_redis_args(out);
+    }
+}
+
+impl<T: FromRedisValue> FromRedisValue for ExpirableValue<T> {
+    fn from_redis_value(value: &redis::Value) -> redis::RedisResult<Self> {
+        match value {
+            redis::Value::Bulk(entries) if entries.len() == 2 => Ok(Self {
+                actual: from_redis_value(&entries[0])?,
+                expired_when: from_redis_value(&entries[1])?,
+            }),
+            _ => Err(RedisError::from((
+                ErrorKind::TypeError,
+                "Response was of incompatible type",
+                format!("{:?} (response was {:?})", "Not a 2-tuple", value),
+            ))),
+        }
+    }
+}
+
+#[cfg_attr(test, mockable)]
+pub async fn get_or_set_with_expire2<F, Fut, T>(
+    cache_key: &str,
+    data_loader: F,
+    expire_seconds: usize,
+) -> anyhow::Result<T>
+where
+    T: FromRedisValue + ToRedisArgs + Send + Sync,
+    Fut: Future<Output = anyhow::Result<T>> + Send,
+    F: FnOnce() -> Fut + Send + 'static,
+{
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
+    let expire_time: u64 = now + expire_seconds as u64;
+
+    match get::<ExpirableValue<T>>(cache_key).await {
+        Ok(Some(value)) => {
+            if value.is_expired(now) {
+                let cache_key = cache_key.to_owned();
+                tokio::spawn(async move {
+                    let new_value = ExpirableValue {
+                        actual: data_loader().await?,
+                        expired_when: expire_time,
+                    };
+
+                    set(&cache_key, &new_value).await
+                });
+            }
+            Ok(value.actual)
+        }
+        Ok(None) => {
+            let value = ExpirableValue {
+                actual: data_loader().await?,
+                expired_when: expire_time,
+            };
+
+            set(&cache_key, &value).await?;
+
+            Ok(value.actual)
         }
         Err(err) => {
             error!("Failed to connect to redis: {}", err);
