@@ -9,7 +9,7 @@ static CONFIG: Lazy<MyConfig> = Lazy::new(|| MyConfig::load(Environment::Develop
 fn main() {
     // This is an example. DO NOT ACTUALLY SET YOUR PASSWORD IN YOUR CODEBASE.
     // please refer to security best practice for your application deployment.
-    std::env::set_var("APP__DB__PASSWORD", "supersecurepassword");
+    std::env::set_var("APP_DB__PASSWORD", "supersecurepassword");
 
     // This will load config from
     //   1. config/base
@@ -27,7 +27,7 @@ fn main() {
 
     setup_db();
 
-    std::env::remove_var("APP__DB__PASSWORD");
+    std::env::remove_var("APP_DB__PASSWORD");
     std::env::remove_var("APP_ENVIRONMENT");
 }
 

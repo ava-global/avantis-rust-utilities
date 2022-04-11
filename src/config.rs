@@ -13,7 +13,7 @@
 //! 1. Create a base config file like `config/base.toml`[^1] to your project.
 //! 2. Create an environment config file like `config/develop.toml` to your project.
 //! 3. Set env to replace credentials. Use `APP` for prefix and separator `__` for hierarchy.
-//!    For example, `APP__STOCK_DB__PASSWORD` will replace config at field `stock_db.password`.
+//!    For example, `APP_STOCK_DB__PASSWORD` will replace config at field `stock_db.password`.
 //! 4. In your code, create a config struct which mirror configuration from earlier steps.
 //! 5. Call `load_config` with selected Environment into the struct from step 4.
 //!
@@ -62,7 +62,9 @@ pub fn load_config<'de, T: Deserialize<'de>>(environment: Environment) -> Result
     let env_config_file =
         File::with_name(&format!("config/{}", environment.to_string())).required(true);
 
-    let custom_env_vars = EnvironmentVariables::with_prefix("app").separator("__");
+    let custom_env_vars = EnvironmentVariables::with_prefix("app")
+        .prefix_separator("_")
+        .separator("__");
 
     load_custom_config(base_config_file, env_config_file, custom_env_vars)
 }
@@ -203,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_load_config_success() {
-        std::env::set_var("APP__DB__PASSWORD", "supersecurepassword");
+        std::env::set_var("APP_DB__PASSWORD", "supersecurepassword");
 
         let expected = MyConfig {
             log_level: "info".to_string(),
@@ -219,7 +221,9 @@ mod tests {
         let actual = load_custom_config::<MyConfig>(
             File::with_name("config/base").required(true),
             File::with_name("config/develop").required(true),
-            EnvironmentVariables::with_prefix("app").separator("__"),
+            EnvironmentVariables::with_prefix("app")
+                .prefix_separator("_")
+                .separator("__"),
         )
         .unwrap();
 
@@ -237,7 +241,7 @@ mod tests {
 
         assert_eq!(expected, actual);
 
-        std::env::remove_var("APP__DB__PASSWORD");
+        std::env::remove_var("APP_DB__PASSWORD");
     }
 
     #[test]
