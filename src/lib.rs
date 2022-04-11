@@ -4,3 +4,5 @@
 pub mod config;
 #[cfg(feature = "db")]
 pub mod db;
+
+pub mod redis;
