@@ -2,13 +2,16 @@ use async_trait::async_trait;
 use bb8_redis::bb8::RunError;
 use bb8_redis::redis::RedisError;
 use redis::{AsyncCommands, FromRedisValue, ToRedisArgs};
-use redis_cluster_async::Connection;
 use std::{
     future::Future,
     time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
 use tracing::error;
+
+pub use connection::Connection;
+pub use connection::Pool;
+pub use connection::RedisConfig;
 
 #[async_trait]
 pub trait AsyncCommandsExt: AsyncCommands {
@@ -38,7 +41,7 @@ pub trait AsyncCommandsExt: AsyncCommands {
 }
 
 #[async_trait]
-impl AsyncCommandsExt for Connection {
+impl AsyncCommandsExt for redis_cluster_async::Connection {
     async fn get_or_fetch<K, V, F, Fut>(
         &mut self,
         key: K,
@@ -129,21 +132,18 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub mod connection {
+mod connection {
     use async_trait::async_trait;
     use bb8_redis::bb8;
-    use bb8_redis::bb8::Pool;
-    use bb8_redis::bb8::PooledConnection;
     use redis::IntoConnectionInfo;
     use redis::RedisError;
     use redis::RedisResult;
-    use redis_cluster_async::Client;
-    use redis_cluster_async::Connection;
     use serde::Deserialize;
 
     use super::Result;
 
-    pub type PooledClusterConnection = PooledConnection<'static, RedisClusterConnectionManager>;
+    pub type Pool = bb8::Pool<RedisClusterConnectionManager>;
+    pub type Connection = bb8::PooledConnection<'static, RedisClusterConnectionManager>;
 
     #[derive(Clone, Debug, PartialEq, Deserialize)]
     pub struct RedisConfig {
@@ -157,7 +157,7 @@ pub mod connection {
             self.hosts.iter().map(AsRef::as_ref).collect()
         }
 
-        pub async fn init_pool(&self) -> Result<Pool<RedisClusterConnectionManager>> {
+        pub async fn init_pool(&self) -> Result<Pool> {
             Ok(bb8::Pool::builder()
                 .max_size(self.max_connections)
                 .build(RedisClusterConnectionManager::new(self.hosts_str())?)
@@ -166,20 +166,20 @@ pub mod connection {
     }
 
     pub struct RedisClusterConnectionManager {
-        client: Client,
+        client: redis_cluster_async::Client,
     }
 
     impl RedisClusterConnectionManager {
         pub fn new<T: IntoConnectionInfo>(info: Vec<T>) -> Result<Self> {
             Ok(RedisClusterConnectionManager {
-                client: Client::open(info)?,
+                client: redis_cluster_async::Client::open(info)?,
             })
         }
     }
 
     #[async_trait]
     impl bb8::ManageConnection for RedisClusterConnectionManager {
-        type Connection = Connection;
+        type Connection = redis_cluster_async::Connection;
         type Error = RedisError;
 
         async fn connect(&self) -> RedisResult<Self::Connection> {
