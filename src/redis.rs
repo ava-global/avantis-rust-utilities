@@ -22,9 +22,9 @@ pub trait AsyncCommandsExt: AsyncCommands {
         expire_seconds: usize,
     ) -> Result<V>
     where
-        K: ToRedisArgs + Send + Clone + Sync,
-        V: FromRedisValue + ToRedisArgs + Send + Sync + Clone,
-        F: FnOnce() -> Fut + Send + 'static,
+        K: ToRedisArgs + Send + Sync,
+        V: FromRedisValue + ToRedisArgs + Send + Sync,
+        F: FnOnce() -> Fut + Send,
         Fut: Future<Output = anyhow::Result<V>> + Send;
 
     async fn get_or_refresh<K, V, F, Fut>(
@@ -34,9 +34,9 @@ pub trait AsyncCommandsExt: AsyncCommands {
         expire_seconds: usize,
     ) -> Result<V>
     where
-        K: ToRedisArgs + Send + Clone + Sync + Copy,
-        V: FromRedisValue + ToRedisArgs + Send + Sync + Clone,
-        F: FnOnce() -> Fut + Send + 'static,
+        K: ToRedisArgs + Send + Sync,
+        V: FromRedisValue + ToRedisArgs + Send + Sync,
+        F: FnOnce() -> Fut + Send,
         Fut: Future<Output = anyhow::Result<V>> + Send;
 }
 
@@ -49,9 +49,9 @@ impl AsyncCommandsExt for redis_cluster_async::Connection {
         expire_seconds: usize,
     ) -> Result<V>
     where
-        K: ToRedisArgs + Send + Clone + Sync,
-        V: FromRedisValue + ToRedisArgs + Send + Sync + Clone,
-        F: FnOnce() -> Fut + Send + 'static,
+        K: ToRedisArgs + Send + Sync,
+        V: FromRedisValue + ToRedisArgs + Send + Sync,
+        F: FnOnce() -> Fut + Send,
         Fut: Future<Output = anyhow::Result<V>> + Send,
     {
         match self.get(&key).await {
@@ -75,9 +75,9 @@ impl AsyncCommandsExt for redis_cluster_async::Connection {
         expire_seconds: usize,
     ) -> Result<V>
     where
-        K: ToRedisArgs + Send + Sync + Clone + Copy,
-        V: FromRedisValue + ToRedisArgs + Send + Sync + Clone,
-        F: FnOnce() -> Fut + Send + 'static,
+        K: ToRedisArgs + Send + Sync,
+        V: FromRedisValue + ToRedisArgs + Send + Sync,
+        F: FnOnce() -> Fut + Send,
         Fut: Future<Output = anyhow::Result<V>> + Send,
     {
         let now = SystemTime::now()
