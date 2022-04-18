@@ -6,8 +6,6 @@ use redis::cluster::ClusterClient;
 
 #[cfg(test)]
 use mocktopus::macros::mockable;
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 
 use std::{
     future::Future,
@@ -64,6 +62,23 @@ impl bb8::ManageConnection for RedisClusterConnectionManager {
 
 static CONNECTION_POOL: OnceCell<Pool<RedisClusterConnectionManager>> = OnceCell::const_new();
 
+pub async fn initialize(redis_url: &str, max_size: u32) -> anyhow::Result<()> {
+    CONNECTION_POOL
+        .set(create_connection_pool(redis_url, max_size).await?)
+        .map_err(|_error| return anyhow!("redis connection pool is already initialized"))
+}
+
+#[cfg_attr(test, mockable)]
+async fn get_connection() -> anyhow::Result<PooledConnection<'static, RedisClusterConnectionManager>>
+{
+    CONNECTION_POOL
+        .get()
+        .expect("redis connection pool is not initialized")
+        .get()
+        .await
+        .map_err(|error| error.into())
+}
+
 // [redis_endpoint, [key]]
 type RedisKeysResponse = Vec<(String, Vec<String>)>;
 
@@ -108,6 +123,32 @@ where
         .map_err(|err| err.into())
 }
 
+#[cfg_attr(test, mockable)]
+pub async fn hget<K, F, V>(key: K, field: F) -> anyhow::Result<Option<V>>
+where
+    K: ToRedisArgs + Sync + Send,
+    F: ToRedisArgs + Sync,
+    V: FromRedisValue + Sync,
+{
+    get_connection()
+        .await?
+        .hget(key, field)
+        .map_err(|err| err.into())
+}
+
+#[cfg_attr(test, mockable)]
+pub async fn hset_multiple<K, F, V>(key: K, items: &[(F, V)]) -> anyhow::Result<()>
+where
+    K: ToRedisArgs + Sync + Send,
+    F: ToRedisArgs + Sync,
+    V: ToRedisArgs + Sync,
+{
+    get_connection()
+        .await?
+        .hset_multiple(key, items)
+        .map_err(|err| err.into())
+}
+
 #[tracing::instrument(name = "redis::keys")]
 #[cfg_attr(test, mockable)]
 pub async fn keys(pattern: &str) -> anyhow::Result<Vec<String>> {
@@ -128,23 +169,6 @@ pub async fn m_get(keys: &[&str]) -> anyhow::Result<Vec<Option<String>>> {
     get_connection().await?.get(keys).map_err(|err| err.into())
 }
 
-pub async fn initialize(redis_url: &str, max_size: u32) -> anyhow::Result<()> {
-    CONNECTION_POOL
-        .set(create_connection_pool(redis_url, max_size).await?)
-        .map_err(|_error| return anyhow!("redis connection pool is already initialized"))
-}
-
-#[cfg_attr(test, mockable)]
-async fn get_connection() -> anyhow::Result<PooledConnection<'static, RedisClusterConnectionManager>>
-{
-    CONNECTION_POOL
-        .get()
-        .expect("redis connection pool is not initialized")
-        .get()
-        .await
-        .map_err(|error| error.into())
-}
-
 #[cfg_attr(test, mockable)]
 async fn create_connection_pool(
     redis_url: &str,
@@ -158,17 +182,16 @@ async fn create_connection_pool(
         .await?)
 }
 
-#[tracing::instrument(name = "redis::get_or_set_with_expire", skip_all)]
 #[cfg_attr(test, mockable)]
-pub async fn get_or_set_with_expire<F, Fut, T>(
+pub async fn get_or_fetch<F, Fut, T>(
     cache_key: &str,
     data_loader: F,
     expire_seconds: usize,
 ) -> anyhow::Result<T>
 where
-    T: FromRedisValue + ToRedisArgs + Send + Sync,
+    T: FromRedisValue + ToRedisArgs + Send + Sync + Clone,
     Fut: Future<Output = anyhow::Result<T>> + Send,
-    F: FnOnce() -> Fut + Send,
+    F: FnOnce() -> Fut + Send + 'static,
 {
     match get(cache_key).await {
         Ok(Some(bytes)) => Ok(bytes),
@@ -184,57 +207,14 @@ where
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-struct ExpirableValue<T> {
-    actual: T,
-    expired_when: u64,
-}
-
-impl<T> ExpirableValue<T> {
-    fn is_expired(&self, now: u64) -> bool {
-        now > self.expired_when
-    }
-}
-
-impl<T: Serialize> ToRedisArgs for ExpirableValue<T> {
-    fn write_redis_args<W>(&self, out: &mut W)
-    where
-        W: ?Sized + redis::RedisWrite,
-    {
-        let mut serializer = flexbuffers::FlexbufferSerializer::new();
-        self.serialize(&mut serializer).unwrap();
-
-        out.write_arg(serializer.view());
-    }
-}
-
-impl<T: DeserializeOwned> FromRedisValue for ExpirableValue<T> {
-    fn from_redis_value(value: &redis::Value) -> redis::RedisResult<Self> {
-        match value {
-            redis::Value::Data(bytes) => {
-                let deserializer = flexbuffers::Reader::get_root(bytes as &[u8]).unwrap();
-
-                let value = ExpirableValue::<T>::deserialize(deserializer).unwrap();
-
-                Ok(value)
-            }
-            _ => Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Response was of incompatible type",
-                format!("{:?} (response was {:?})", "Not a 2-tuple", value),
-            ))),
-        }
-    }
-}
-
 #[cfg_attr(test, mockable)]
-pub async fn get_or_set_with_expire2<F, Fut, T>(
-    cache_key: &str,
+pub async fn get_or_refresh<F, Fut, T>(
+    key: &str,
     data_loader: F,
     expire_seconds: usize,
 ) -> anyhow::Result<T>
 where
-    T: Serialize + DeserializeOwned + Send + Sync,
+    T: FromRedisValue + ToRedisArgs + Send + Sync + Clone,
     Fut: Future<Output = anyhow::Result<T>> + Send,
     F: FnOnce() -> Fut + Send + 'static,
 {
@@ -242,103 +222,50 @@ where
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs();
-    let expire_time: u64 = now + expire_seconds as u64;
+    let is_expired = |expired_when: u64| expired_when > now;
 
-    match get::<ExpirableValue<T>>(cache_key).await {
-        Ok(Some(value)) => {
-            if value.is_expired(now) {
-                let cache_key = cache_key.to_owned();
-                tokio::spawn(async move {
-                    let new_value = ExpirableValue {
-                        actual: data_loader().await?,
-                        expired_when: expire_time,
-                    };
+    async fn load_and_set_cache<F, Fut, T>(
+        key: String,
+        data_loader: F,
+        expired_when: u64,
+    ) -> anyhow::Result<T>
+    where
+        T: FromRedisValue + ToRedisArgs + Send + Sync + Clone,
+        Fut: Future<Output = anyhow::Result<T>> + Send,
+        F: FnOnce() -> Fut + Send + 'static,
+    {
+        let new_value = data_loader().await?;
+        hset_multiple(&key, &vec![("expired_when", expired_when)]).await?;
+        hset_multiple(&key, &vec![("value", new_value.clone())]).await?;
 
-                    set(&cache_key, &new_value).await
-                });
-            }
-            Ok(value.actual)
+        Ok(new_value)
+    }
+
+    match (
+        hget::<_, _, u64>(key, "expired_when").await,
+        hget::<_, _, T>(key, "value").await,
+    ) {
+        (Ok(Some(expired_when)), Ok(Some(value))) if is_expired(expired_when) => Ok(value),
+        (Ok(Some(_)), Ok(Some(value))) => {
+            let cloned_key = key.to_owned();
+            let new_expired_when = now + expire_seconds as u64;
+            tokio::spawn(async move {
+                let _ = load_and_set_cache(cloned_key, data_loader, new_expired_when).await;
+                //TODO: handle me
+            });
+
+            Ok(value)
         }
-        Ok(None) => {
-            let value = ExpirableValue {
-                actual: data_loader().await?,
-                expired_when: expire_time,
-            };
+        (Ok(None), _) | (_, Ok(None)) => {
+            let new_expired_when = now + expire_seconds as u64;
+            let new_value =
+                load_and_set_cache(key.to_owned(), data_loader, new_expired_when).await?;
 
-            set(&cache_key, &value).await?;
-
-            Ok(value.actual)
+            Ok(new_value)
         }
-        Err(err) => {
+        (Err(err), _) | (_, Err(err)) => {
             error!("Failed to connect to redis: {}", err);
             Ok(data_loader().await?)
         }
     }
-}
-
-#[tracing::instrument(name = "redis::get_or_set_in_background_with_expire", skip_all)]
-#[cfg_attr(test, mockable)]
-pub async fn get_or_set_in_background_with_expire<F, Fut>(
-    cache_key: &str,
-    data_loader: F,
-    expire_seconds: u64,
-) -> anyhow::Result<Vec<u8>>
-where
-    Fut: Future<Output = anyhow::Result<Vec<u8>>> + Send,
-    F: FnOnce() -> Fut + Send + 'static,
-{
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs();
-    let get_result: Result<Option<Vec<u8>>> = get(cache_key).await;
-    match get_result {
-        Ok(Some(bytes)) => {
-            let (expire_time_bytes, rest) = bytes.split_at(std::mem::size_of::<u64>());
-            let expire_time: u64 = u64::from_be_bytes(expire_time_bytes.try_into().unwrap());
-            if now > expire_time {
-                let new_expires_time = now + expire_seconds;
-                let cache_key = cache_key.to_owned();
-                tokio::spawn(async move {
-                    if let Err(e) =
-                        load_and_set_in_background(cache_key, data_loader, new_expires_time).await
-                    {
-                        error!("Failed to load and set in background: {}", e);
-                    }
-                });
-            }
-            Ok(rest.to_vec())
-        }
-        Ok(None) => {
-            let result = data_loader().await?;
-            let expire_time = now + expire_seconds;
-            set_and_append_timestamp(cache_key, &result, expire_time).await?;
-            Ok(result)
-        }
-        Err(err) => {
-            error!("Failed to connect to redis: {}", err);
-            Ok(data_loader().await?)
-        }
-    }
-}
-
-#[cfg_attr(test, mockable)]
-async fn set_and_append_timestamp(cache_key: &str, data: &[u8], timestamp: u64) -> Result<()> {
-    let mut payload = timestamp.to_be_bytes().to_vec();
-    payload.append(data.to_vec().as_mut());
-    set(&cache_key, &payload).await
-}
-
-#[cfg_attr(test, mockable)]
-async fn load_and_set_in_background<F, Fut>(
-    cache_key: String,
-    data_loader: F,
-    timestamp: u64,
-) -> Result<()>
-where
-    Fut: Future<Output = anyhow::Result<Vec<u8>>> + Send,
-    F: FnOnce() -> Fut + Send,
-{
-    let result = data_loader().await?;
-    set_and_append_timestamp(&cache_key, &result, timestamp).await
 }

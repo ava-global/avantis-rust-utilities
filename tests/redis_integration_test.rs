@@ -6,40 +6,49 @@ use avantis_utils::redis;
 #[tokio::test]
 async fn testx() {
     redis::initialize(
-        "redis://localhost:6379",
+        "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379",
         2,
     )
     .await
     .unwrap();
 
     let key = "TEST1234";
+    let expire_seconds = 5;
 
     redis::del(key).await.unwrap();
 
-    redis::get_or_set_in_background_with_expire(
-        &key,
-        || async { Ok("HELO".as_bytes().to_vec()) },
-        5,
-    )
-    .await
-    .unwrap();
-    let result = redis::get::<Vec<u8>>(&key).await.unwrap().unwrap();
-    assert_eq!(&result[8..], "HELO".as_bytes());
+    // Initial Set
+    let get_data = || async { Ok("HELO".to_string()) };
+    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
+        .await
+        .unwrap();
+    assert_eq!(result, "HELO");
 
+    let result = redis::hget::<_, _, String>(&key, "value")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(result, "HELO");
+
+    // First get, return cached value & fetch new one
     tokio::time::sleep(Duration::from_secs(6)).await;
+    let get_data = || async { Ok("HELO2".to_string()) };
+    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
+        .await
+        .unwrap();
 
-    let result = redis::get_or_set_in_background_with_expire(
-        &key,
-        || async { Ok("HELO2".as_bytes().to_vec()) },
-        5,
-    )
-    .await
-    .unwrap();
+    assert_eq!(result, "HELO");
 
-    assert_eq!(&result, "HELO".as_bytes());
-
-
+    // Second get, return cached value
     tokio::time::sleep(Duration::from_secs(2)).await;
-    let result = redis::get::<Vec<u8>>(&key).await.unwrap().unwrap();
-    assert_eq!(&result[8..], "HELO2".as_bytes());
+    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
+        .await
+        .unwrap();
+
+    assert_eq!(result, "HELO2");
+
+    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
+        .await
+        .unwrap();
+    assert_eq!(result, "HELO2");
 }
