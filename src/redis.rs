@@ -10,100 +10,6 @@ use std::{
 use thiserror::Error;
 use tracing::error;
 
-#[cfg(test)]
-use mocktopus::macros::mockable;
-
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("data error")]
-    Data(#[from] anyhow::Error),
-    #[error("cluster connection error")]
-    Cluster(#[from] RunError<RedisError>),
-    #[error("redis error")]
-    Redis(#[from] RedisError),
-    #[error("cluster initialization error: {0}")]
-    Initialization(&'static str),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-pub mod connection {
-    use async_trait::async_trait;
-    use bb8_redis::bb8;
-    use bb8_redis::bb8::Pool;
-    use bb8_redis::bb8::PooledConnection;
-    use redis::IntoConnectionInfo;
-    use redis::RedisError;
-    use redis::RedisResult;
-    use redis_cluster_async::Client;
-    use redis_cluster_async::Connection;
-    use tokio::sync::OnceCell;
-
-    use super::Error;
-    use super::Result;
-
-    type PooledClusterConnection = PooledConnection<'static, RedisClusterConnectionManager>;
-
-    pub struct RedisClusterConnectionManager {
-        client: Client,
-    }
-
-    impl RedisClusterConnectionManager {
-        pub fn new<T: IntoConnectionInfo>(info: Vec<T>) -> Result<Self> {
-            Ok(RedisClusterConnectionManager {
-                client: Client::open(info).map_err(Error::Redis)?,
-            })
-        }
-    }
-
-    #[async_trait]
-    impl bb8::ManageConnection for RedisClusterConnectionManager {
-        type Connection = Connection;
-        type Error = RedisError;
-
-        async fn connect(&self) -> RedisResult<Self::Connection> {
-            self.client.get_connection().await
-        }
-
-        async fn is_valid(&self, _: &mut Self::Connection) -> RedisResult<()> {
-            Ok(())
-        }
-
-        fn has_broken(&self, _: &mut Self::Connection) -> bool {
-            false
-        }
-    }
-
-    static CONNECTION_POOL: OnceCell<Pool<RedisClusterConnectionManager>> = OnceCell::const_new();
-
-    pub async fn initialize(redis_url: &str, max_size: u32) -> Result<()> {
-        CONNECTION_POOL
-            .set(create_connection_pool(redis_url, max_size).await?)
-            .map_err(|_| return Error::Initialization("cluster already initialized"))
-    }
-
-    pub async fn create_connection_pool(
-        redis_url: &str,
-        max_size: u32,
-    ) -> Result<Pool<RedisClusterConnectionManager>> {
-        let urls: Vec<&str> = redis_url.split(',').collect();
-        let manager = RedisClusterConnectionManager::new(urls)?;
-        Ok(bb8::Pool::builder()
-            .max_size(max_size)
-            .build(manager)
-            .await?)
-    }
-
-    pub async fn get_connection() -> Result<PooledClusterConnection> {
-        CONNECTION_POOL
-            .get()
-            .ok_or_else(|| Error::Initialization("cluster not initialized"))?
-            .get()
-            .await
-            .map_err(Error::Cluster)
-    }
-}
-
 #[async_trait]
 pub trait AsyncCommandsExt: AsyncCommands {
     async fn get_or_fetch<K, V, F, Fut>(
@@ -220,6 +126,85 @@ impl AsyncCommandsExt for Connection {
 
                 Ok(new_value)
             }
+        }
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("data error")]
+    Data(#[from] anyhow::Error),
+    #[error("redis error")]
+    Redis(#[from] RedisError),
+    #[error("cluster connection error")]
+    Cluster(#[from] RunError<RedisError>),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub mod connection {
+    use async_trait::async_trait;
+    use bb8_redis::bb8;
+    use bb8_redis::bb8::Pool;
+    use bb8_redis::bb8::PooledConnection;
+    use redis::IntoConnectionInfo;
+    use redis::RedisError;
+    use redis::RedisResult;
+    use redis_cluster_async::Client;
+    use redis_cluster_async::Connection;
+    use serde::Deserialize;
+
+    use super::Result;
+
+    pub type PooledClusterConnection = PooledConnection<'static, RedisClusterConnectionManager>;
+
+    #[derive(Clone, Debug, PartialEq, Deserialize)]
+    pub struct RedisConfig {
+        pub hosts: Vec<String>,
+        pub expire_seconds: usize,
+        pub max_connections: u32,
+    }
+
+    impl RedisConfig {
+        fn hosts_str(&self) -> Vec<&str> {
+            self.hosts.iter().map(AsRef::as_ref).collect()
+        }
+
+        pub async fn init_pool(&self) -> Result<Pool<RedisClusterConnectionManager>> {
+            Ok(bb8::Pool::builder()
+                .max_size(self.max_connections)
+                .build(RedisClusterConnectionManager::new(self.hosts_str())?)
+                .await?)
+        }
+    }
+
+    pub struct RedisClusterConnectionManager {
+        client: Client,
+    }
+
+    impl RedisClusterConnectionManager {
+        pub fn new<T: IntoConnectionInfo>(info: Vec<T>) -> Result<Self> {
+            Ok(RedisClusterConnectionManager {
+                client: Client::open(info)?,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl bb8::ManageConnection for RedisClusterConnectionManager {
+        type Connection = Connection;
+        type Error = RedisError;
+
+        async fn connect(&self) -> RedisResult<Self::Connection> {
+            self.client.get_connection().await
+        }
+
+        async fn is_valid(&self, _: &mut Self::Connection) -> RedisResult<()> {
+            Ok(())
+        }
+
+        fn has_broken(&self, _: &mut Self::Connection) -> bool {
+            false
         }
     }
 }

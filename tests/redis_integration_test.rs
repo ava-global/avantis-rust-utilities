@@ -2,16 +2,26 @@ use std::cmp::max;
 use std::time::Duration;
 
 use ::redis::AsyncCommands;
-use avantis_utils::redis;
+use avantis_utils::config::load_config;
+use avantis_utils::config::Environment;
+use avantis_utils::redis::connection::RedisConfig;
 use avantis_utils::redis::AsyncCommandsExt;
 use avantis_utils::redis::Result;
 use serial_test::serial;
 use tokio;
 
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+struct ExampleConfig {
+    redis: RedisConfig,
+}
+
 #[tokio::test]
 #[serial]
 async fn test_get_or_fetch() -> Result<()> {
-    let pool = redis::connection::create_connection_pool("replace_me", 2).await?;
+    let pool = load_config::<ExampleConfig>(Environment::default())?
+        .redis
+        .init_pool()
+        .await?;
 
     let mut conn = pool.get().await?;
 
@@ -77,11 +87,10 @@ async fn test_get_or_fetch() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_get_or_refresh() -> Result<()> {
-    let pool = redis::connection::create_connection_pool(
-        "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379",
-        2,
-    )
-    .await?;
+    let pool = load_config::<ExampleConfig>(Environment::default())?
+        .redis
+        .init_pool()
+        .await?;
 
     let mut conn = pool.get().await?;
 

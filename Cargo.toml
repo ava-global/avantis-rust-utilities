@@ -35,4 +35,4 @@ serial_test = "*"
 cfg = ["config", "strum", "serde", "anyhow"]
 db = ["sqlx", "serde"]
 default = ["cfg", "db", "redis-utils"]
-redis-utils = ["redis", "redis_cluster_async", "bb8-redis", "async-trait", "tracing", "tokio", "serde", "flexbuffers", "thiserror"]
+redis-utils = ["redis", "redis_cluster_async", "bb8-redis", "async-trait", "tracing", "tokio", "serde", "thiserror"]

@@ -1,10 +1,11 @@
-use anyhow::Result;
 use avantis_utils::config::load_config;
 use avantis_utils::config::Environment;
+use avantis_utils::db;
+use avantis_utils::redis;
 use once_cell::sync::Lazy;
-use serde::Deserialize;
 
-static CONFIG: Lazy<MyConfig> = Lazy::new(|| MyConfig::load(Environment::Development).unwrap());
+static CONFIG: Lazy<ExampleConfig> =
+    Lazy::new(|| ExampleConfig::load(Environment::Development).unwrap());
 
 fn main() {
     // This is an example. DO NOT ACTUALLY SET YOUR PASSWORD IN YOUR CODEBASE.
@@ -15,15 +16,18 @@ fn main() {
     //   1. config/base
     //   2. config/development
     //   3. overriding env variables
-    println!("{:#?}", MyConfig::load(Environment::Development));
+    println!("{:#?}", ExampleConfig::load(Environment::Development));
 
     // Works with different config file format like toml and json as well.
-    println!("{:#?}", MyConfig::load(Environment::Test));
-    println!("{:#?}", MyConfig::load(Environment::Production));
+    println!("{:#?}", ExampleConfig::load(Environment::Test));
+    println!("{:#?}", ExampleConfig::load(Environment::Production));
 
     // Works with environment selected from env too.
     std::env::set_var("APP_ENVIRONMENT", "development");
-    println!("{:#?}", MyConfig::load(Environment::from_env().unwrap()));
+    println!(
+        "{:#?}",
+        ExampleConfig::load(Environment::from_env().unwrap())
+    );
 
     setup_db();
 
@@ -39,21 +43,15 @@ fn setup_db() {
     println!("{:#?}", CONFIG.db);
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct MyConfig {
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+struct ExampleConfig {
     log_level: String,
-    db: MyDbConfig,
+    db: db::DatabaseConfig,
+    redis: redis::connection::RedisConfig,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct MyDbConfig {
-    host: String,
-    user: String,
-    password: String,
-}
-
-impl MyConfig {
-    fn load(environment: Environment) -> Result<MyConfig> {
+impl ExampleConfig {
+    fn load(environment: Environment) -> anyhow::Result<Self> {
         load_config(environment)
     }
 }
