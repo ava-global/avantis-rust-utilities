@@ -1,54 +1,145 @@
+use std::cmp::max;
 use std::time::Duration;
 
+use ::redis::AsyncCommands;
+use avantis_utils::redis;
+use avantis_utils::redis::AsyncCommandsExt;
+use avantis_utils::redis::Result;
+use serial_test::serial;
 use tokio;
 
-use avantis_utils::redis;
 #[tokio::test]
-async fn testx() {
-    redis::initialize(
+#[serial]
+async fn test_get_or_fetch() -> Result<()> {
+    let pool = redis::connection::create_connection_pool("replace_me", 2).await?;
+
+    let mut conn = pool.get().await?;
+
+    let key = "TEST_GET_OR_FETCH";
+    let expire_seconds = 1;
+
+    fn hello_world(time: i32) -> String {
+        format!("HELLO WORLD {time}")
+    }
+
+    let wait_cache_expire = || async {
+        tokio::time::sleep(Duration::from_secs(expire_seconds + 1)).await;
+    };
+
+    // Test that caching works
+
+    let _: () = conn.del(&key).await?;
+    let get_data = move || async move { anyhow::Ok(hello_world(0)) };
+    conn.get_or_fetch(&key, get_data, expire_seconds as usize)
+        .await?;
+    for n in 0..5 {
+        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
+        let result = conn
+            .get_or_fetch(&key, get_data, expire_seconds as usize)
+            .await?;
+        assert_eq!(result, hello_world(0));
+    }
+
+    // Test that expire strategy works
+
+    let _: () = conn.del(&key).await?;
+
+    for n in 0..3 {
+        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
+        let result = conn
+            .get_or_fetch(&key, get_data, expire_seconds as usize)
+            .await?;
+        assert_eq!(result, hello_world(n));
+
+        let result: Option<String> = conn.get(&key).await?;
+        assert_eq!(result.unwrap(), hello_world(n));
+
+        wait_cache_expire().await;
+    }
+
+    // Test that error are thrown properly
+
+    let _: () = conn.del(&key).await?;
+
+    let get_data = move || async move { anyhow::bail!("unable to load data") };
+    let result: Result<String> = conn
+        .get_or_fetch(&key, get_data, expire_seconds as usize)
+        .await;
+
+    assert_eq!(
+        format!("{:?}", result.unwrap_err()),
+        "Data(unable to load data)"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_or_refresh() -> Result<()> {
+    let pool = redis::connection::create_connection_pool(
         "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379",
         2,
     )
-    .await
-    .unwrap();
+    .await?;
 
-    let key = "TEST1234";
-    let expire_seconds = 5;
+    let mut conn = pool.get().await?;
 
-    redis::del(key).await.unwrap();
+    let key = "TEST_GET_OR_REFRESH";
+    let expire_seconds = 1;
 
-    // Initial Set
-    let get_data = || async { Ok("HELO".to_string()) };
-    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
-        .await
-        .unwrap();
-    assert_eq!(result, "HELO");
+    fn hello_world(time: i32) -> String {
+        format!("HELLO WORLD {time}")
+    }
 
-    let result = redis::hget::<_, _, String>(&key, "value")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(result, "HELO");
+    let wait_cache_expire = || async {
+        tokio::time::sleep(Duration::from_secs(expire_seconds + 1)).await;
+    };
 
-    // First get, return cached value & fetch new one
-    tokio::time::sleep(Duration::from_secs(6)).await;
-    let get_data = || async { Ok("HELO2".to_string()) };
-    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
-        .await
-        .unwrap();
+    // Test that caching works
 
-    assert_eq!(result, "HELO");
+    let _: () = conn.del(&key).await?;
 
-    // Second get, return cached value
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
-        .await
-        .unwrap();
+    let get_data = move || async move { anyhow::Ok(hello_world(0)) };
+    conn.get_or_refresh(&key, get_data, 1000).await?;
+    for n in 0..5 {
+        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
+        let result = conn
+            .get_or_refresh(&key, get_data, expire_seconds as usize)
+            .await?;
+        assert_eq!(result, hello_world(0));
+    }
 
-    assert_eq!(result, "HELO2");
+    // Test that expire strategy works
 
-    let result = redis::get_or_set_with_expire2(&key, get_data, expire_seconds)
-        .await
-        .unwrap();
-    assert_eq!(result, "HELO2");
+    let _: () = conn.del(&key).await?;
+
+    for n in 0..3 {
+        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
+        let result = conn
+            .get_or_refresh(&key, get_data, expire_seconds as usize)
+            .await?;
+        assert_eq!(result, hello_world(max(n - 1, 0)));
+
+        let result: Option<String> = conn.hget(&key, "value").await?;
+        assert_eq!(result.unwrap(), hello_world(n));
+
+        wait_cache_expire().await;
+    }
+
+    // Test that error are thrown properly
+
+    let _: () = conn.del(&key).await?;
+
+    let get_data = move || async move { anyhow::bail!("unable to load data") };
+    let result: Result<String> = conn
+        .get_or_refresh(&key, get_data, expire_seconds as usize)
+        .await;
+
+    assert_eq!(
+        format!("{:?}", result.unwrap_err()),
+        "Data(unable to load data)"
+    );
+
+    Ok(())
 }
