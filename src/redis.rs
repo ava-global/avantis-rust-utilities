@@ -6,6 +6,8 @@ use redis::cluster::ClusterClient;
 
 #[cfg(test)]
 use mocktopus::macros::mockable;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use std::{
     future::Future,
@@ -19,7 +21,7 @@ use bb8_redis::bb8::{Pool, PooledConnection};
 use tokio::sync::OnceCell;
 use tracing::error;
 
-use redis::{from_redis_value, Commands, FromRedisValue, ToRedisArgs};
+use redis::{Commands, FromRedisValue, ToRedisArgs};
 
 pub struct RedisClusterConnectionManager {
     client: ClusterClient,
@@ -182,6 +184,7 @@ where
     }
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct ExpirableValue<T> {
     actual: T,
     expired_when: u64,
@@ -193,23 +196,28 @@ impl<T> ExpirableValue<T> {
     }
 }
 
-impl<T: ToRedisArgs> ToRedisArgs for ExpirableValue<T> {
+impl<T: Serialize> ToRedisArgs for ExpirableValue<T> {
     fn write_redis_args<W>(&self, out: &mut W)
     where
         W: ?Sized + redis::RedisWrite,
     {
-        self.actual.write_redis_args(out);
-        self.expired_when.write_redis_args(out);
+        let mut serializer = flexbuffers::FlexbufferSerializer::new();
+        self.serialize(&mut serializer).unwrap();
+
+        out.write_arg(serializer.view());
     }
 }
 
-impl<T: FromRedisValue> FromRedisValue for ExpirableValue<T> {
+impl<T: DeserializeOwned> FromRedisValue for ExpirableValue<T> {
     fn from_redis_value(value: &redis::Value) -> redis::RedisResult<Self> {
         match value {
-            redis::Value::Bulk(entries) if entries.len() == 2 => Ok(Self {
-                actual: from_redis_value(&entries[0])?,
-                expired_when: from_redis_value(&entries[1])?,
-            }),
+            redis::Value::Data(bytes) => {
+                let deserializer = flexbuffers::Reader::get_root(bytes as &[u8]).unwrap();
+
+                let value = ExpirableValue::<T>::deserialize(deserializer).unwrap();
+
+                Ok(value)
+            }
             _ => Err(RedisError::from((
                 ErrorKind::TypeError,
                 "Response was of incompatible type",
@@ -226,7 +234,7 @@ pub async fn get_or_set_with_expire2<F, Fut, T>(
     expire_seconds: usize,
 ) -> anyhow::Result<T>
 where
-    T: FromRedisValue + ToRedisArgs + Send + Sync,
+    T: Serialize + DeserializeOwned + Send + Sync,
     Fut: Future<Output = anyhow::Result<T>> + Send,
     F: FnOnce() -> Fut + Send + 'static,
 {
