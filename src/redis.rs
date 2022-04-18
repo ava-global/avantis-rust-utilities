@@ -83,48 +83,35 @@ impl AsyncCommandsExt for Connection {
             .as_secs();
         let is_expired = |expired_when: u64| expired_when > now;
 
+        macro_rules! awaiting_get_and_set {
+            () => {{
+                let new_expired_when = now + expire_seconds as u64;
+
+                let new_value = data_loader().await?;
+
+                let _: () = self.hset(&key, "expired_when", new_expired_when).await?;
+                let _: () = self.hset(&key, "value", &new_value).await?;
+
+                Ok(new_value)
+            }};
+        }
+
         match (
-            self.hget::<_, _, Option<u64>>(key.clone(), "expired_when")
-                .await,
-            self.hget::<_, _, Option<V>>(key.clone(), "value").await,
+            self.hget::<_, _, Option<u64>>(&key, "expired_when").await,
+            self.hget::<_, _, Option<V>>(&key, "value").await,
         ) {
             (Ok(Some(expired_when)), Ok(Some(value))) if is_expired(expired_when) => Ok(value),
             (Ok(Some(_)), Ok(Some(value))) => {
-                let new_expired_when = now + expire_seconds as u64;
-
-                let new_value = data_loader().await?;
-
-                let _: () = self
-                    .hset(key.clone(), "expired_when", new_expired_when)
-                    .await?;
-                let _: () = self.hset(key.clone(), "value", new_value.clone()).await?;
+                // TODO: This should spawn task to get and set in background instead
+                let _: Result<V> = awaiting_get_and_set!();
 
                 Ok(value)
             }
-            (Ok(None), _) | (_, Ok(None)) => {
-                let new_expired_when = now + expire_seconds as u64;
-
-                let new_value = data_loader().await?;
-
-                let _: () = self
-                    .hset(key.clone(), "expired_when", new_expired_when)
-                    .await?;
-                let _: () = self.hset(key.clone(), "value", new_value.clone()).await?;
-
-                Ok(new_value)
-            }
+            (Ok(None), _) | (_, Ok(None)) => awaiting_get_and_set!(),
             (Err(err), _) | (_, Err(err)) => {
                 error!("redis error: {:?}", err);
-                let new_expired_when = now + expire_seconds as u64;
 
-                let new_value = data_loader().await?;
-
-                let _: () = self
-                    .hset(key.clone(), "expired_when", new_expired_when)
-                    .await?;
-                let _: () = self.hset(key.clone(), "value", new_value.clone()).await?;
-
-                Ok(new_value)
+                awaiting_get_and_set!()
             }
         }
     }

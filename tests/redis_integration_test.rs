@@ -18,7 +18,7 @@ struct ExampleConfig {
 #[tokio::test]
 #[serial]
 async fn test_get_or_fetch() -> Result<()> {
-    let pool = load_config::<ExampleConfig>(Environment::default())?
+    let pool = load_config::<ExampleConfig>(Environment::Test)?
         .redis
         .init_pool()
         .await?;
@@ -87,7 +87,7 @@ async fn test_get_or_fetch() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_get_or_refresh() -> Result<()> {
-    let pool = load_config::<ExampleConfig>(Environment::default())?
+    let pool = load_config::<ExampleConfig>(Environment::Test)?
         .redis
         .init_pool()
         .await?;
