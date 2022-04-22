@@ -14,20 +14,8 @@ pub use connection::Pool;
 pub use connection::RedisConfig;
 
 #[async_trait]
-pub trait AsyncCommandsExt: AsyncCommands {
+pub trait GetOrFetchExt: AsyncCommands {
     async fn get_or_fetch<K, V, F, Fut>(
-        &mut self,
-        key: K,
-        data_loader: F,
-        expire_seconds: usize,
-    ) -> Result<V>
-    where
-        K: ToRedisArgs + Send + Sync,
-        V: FromRedisValue + ToRedisArgs + Send + Sync,
-        F: FnOnce() -> Fut + Send,
-        Fut: Future<Output = anyhow::Result<V>> + Send;
-
-    async fn get_or_refresh<K, V, F, Fut>(
         &mut self,
         key: K,
         data_loader: F,
@@ -41,7 +29,7 @@ pub trait AsyncCommandsExt: AsyncCommands {
 }
 
 #[async_trait]
-impl AsyncCommandsExt for redis_cluster_async::Connection {
+impl GetOrFetchExt for redis_cluster_async::Connection {
     async fn get_or_fetch<K, V, F, Fut>(
         &mut self,
         key: K,
@@ -67,50 +55,76 @@ impl AsyncCommandsExt for redis_cluster_async::Connection {
             }
         }
     }
+}
 
-    async fn get_or_refresh<K, V, F, Fut>(
-        &mut self,
-        key: K,
+#[async_trait]
+pub trait GetOrRefreshExt {
+    async fn get_or_refresh<'a, V, F, Fut>(
+        mut self,
+        key: &str, // Would be nice if key is K: ToRedisArgs + Send + Sync instead.
         data_loader: F,
         expire_seconds: usize,
     ) -> Result<V>
     where
-        K: ToRedisArgs + Send + Sync,
-        V: FromRedisValue + ToRedisArgs + Send + Sync,
-        F: FnOnce() -> Fut + Send,
+        V: FromRedisValue + ToRedisArgs + Send + Sync + 'static,
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = anyhow::Result<V>> + Send;
+}
+
+#[async_trait]
+impl GetOrRefreshExt for connection::Connection {
+    async fn get_or_refresh<'a, V, F, Fut>(
+        mut self,
+        key: &str,
+        data_loader: F,
+        expire_seconds: usize,
+    ) -> Result<V>
+    where
+        V: FromRedisValue + ToRedisArgs + Send + Sync + 'static,
+        F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = anyhow::Result<V>> + Send,
     {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs();
-        let is_expired = |expired_when: u64| expired_when > now;
+        let is_expired = |expired_when: u64| now > expired_when;
 
+        let owned_key = key.to_owned();
         macro_rules! awaiting_get_and_set {
             () => {{
                 let new_expired_when = now + expire_seconds as u64;
 
                 let new_value = data_loader().await?;
 
-                let _: () = self.hset(&key, "expired_when", new_expired_when).await?;
-                let _: () = self.hset(&key, "value", &new_value).await?;
+                let _: () = self
+                    .hset(&owned_key, "expired_when", new_expired_when)
+                    .await?;
+                let _: () = self.hset(&owned_key, "value", &new_value).await?;
 
-                Ok(new_value)
+                let result: Result<V> = Ok(new_value);
+
+                result
             }};
         }
 
-        match (
-            self.hget::<_, _, Option<u64>>(&key, "expired_when").await,
-            self.hget::<_, _, Option<V>>(&key, "value").await,
-        ) {
-            (Ok(Some(expired_when)), Ok(Some(value))) if is_expired(expired_when) => Ok(value),
+        let expired_when: Result<Option<u64>> = Ok(self.hget(key, "expired_when").await?);
+        let value: Result<Option<V>> = Ok(self.hget(key, "value").await?);
+
+        match (expired_when, value) {
+            (Ok(Some(expired_when)), Ok(Some(value))) if !is_expired(expired_when) => Ok(value),
             (Ok(Some(_)), Ok(Some(value))) => {
-                // TODO: This should spawn task to get and set in background instead
-                let _: Result<V> = awaiting_get_and_set!();
+                tokio::spawn(async move {
+                    if let Err(e) = async { awaiting_get_and_set!() }.await {
+                        error!("Failed to load and set in background: {}", e);
+                    }
+                });
 
                 Ok(value)
             }
-            (Ok(None), _) | (_, Ok(None)) => awaiting_get_and_set!(),
+            (Ok(None), _) | (_, Ok(None)) => {
+                awaiting_get_and_set!()
+            }
             (Err(err), _) | (_, Err(err)) => {
                 error!("redis error: {:?}", err);
 
@@ -135,6 +149,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 mod connection {
     use async_trait::async_trait;
     use bb8_redis::bb8;
+    use redis::aio::ConnectionLike;
     use redis::IntoConnectionInfo;
     use redis::RedisError;
     use redis::RedisResult;
@@ -186,12 +201,25 @@ mod connection {
             self.client.get_connection().await
         }
 
-        async fn is_valid(&self, _: &mut Self::Connection) -> RedisResult<()> {
-            Ok(())
+        async fn is_valid(&self, connection: &mut Self::Connection) -> RedisResult<()> {
+            connection
+                .req_packed_command(&redis::cmd("PING"))
+                .await
+                .and_then(check_is_pong)
         }
 
         fn has_broken(&self, _: &mut Self::Connection) -> bool {
             false
+        }
+    }
+
+    fn check_is_pong(value: redis::Value) -> RedisResult<()> {
+        match value {
+            redis::Value::Status(string) if &string == "PONG" => RedisResult::Ok(()),
+            _ => RedisResult::Err(RedisError::from((
+                redis::ErrorKind::ResponseError,
+                "ping request",
+            ))),
         }
     }
 }

@@ -1,85 +1,169 @@
-use std::cmp::max;
-use std::time::Duration;
-
 use ::redis::AsyncCommands;
-use avantis_utils::config::load_config;
-use avantis_utils::config::Environment;
-use avantis_utils::redis::connection::RedisConfig;
-use avantis_utils::redis::AsyncCommandsExt;
+use avantis_utils::redis::GetOrFetchExt;
+use avantis_utils::redis::GetOrRefreshExt;
 use avantis_utils::redis::Result;
 use serial_test::serial;
 use tokio;
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
-struct ExampleConfig {
-    redis: RedisConfig,
-}
-
 #[tokio::test]
 #[serial]
 async fn test_get_or_fetch() -> Result<()> {
-    let pool = load_config::<ExampleConfig>(Environment::Test)?
-        .redis
-        .init_pool()
-        .await?;
-
-    let mut conn = pool.get().await?;
+    let mut connection = connection::get_redis_connection().await.unwrap();
 
     let key = "TEST_GET_OR_FETCH";
-    let expire_seconds = 1;
-
-    fn hello_world(time: i32) -> String {
-        format!("HELLO WORLD {time}")
-    }
-
-    let wait_cache_expire = || async {
-        tokio::time::sleep(Duration::from_secs(expire_seconds + 1)).await;
-    };
 
     // Test that caching works
 
-    let _: () = conn.del(&key).await?;
-    let get_data = move || async move { anyhow::Ok(hello_world(0)) };
-    conn.get_or_fetch(&key, get_data, expire_seconds as usize)
-        .await?;
-    for n in 0..5 {
-        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
-        let result = conn
-            .get_or_fetch(&key, get_data, expire_seconds as usize)
-            .await?;
-        assert_eq!(result, hello_world(0));
+    let get_cached_data_count = 5;
+    let expire_seconds = 1000;
+
+    let _: () = connection.del(&key).await.unwrap();
+
+    let start_test_when = unix_time_now_millis();
+
+    let result = connection
+        .get_or_fetch(
+            &key,
+            || async { computation::long(0).await },
+            expire_seconds,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        computation::result(0),
+        result,
+        "Should return computed data: {}. Got {}",
+        computation::result(0),
+        result,
+    );
+
+    let result: Option<String> = connection.get(key).await.unwrap();
+    let result = result.unwrap();
+    assert_eq!(
+        computation::result(0),
+        result,
+        "Should return cached data: {}. Got {}",
+        computation::result(0),
+        result,
+    );
+
+    for _ in 0..get_cached_data_count {
+        let result = connection
+            .get_or_fetch(
+                &key,
+                || async { computation::long(1).await },
+                expire_seconds,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            computation::result(0),
+            result,
+            "Should return cached data: {}. Got {}",
+            computation::result(0),
+            result,
+        );
     }
+
+    let time_used_millis = unix_time_now_millis() - start_test_when;
+
+    assert!(
+        time_used_millis
+            < computation::LONG_COMPUTATION_TIME_MILLIS as u128 * get_cached_data_count,
+        "Computation should be computed once if ttl is long enough. ideal computation time: {} ms. time_used: {} ms",
+        computation::LONG_COMPUTATION_TIME_MILLIS,
+        time_used_millis
+    );
 
     // Test that expire strategy works
 
-    let _: () = conn.del(&key).await?;
+    let expire_seconds = 1;
 
-    for n in 0..3 {
-        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
-        let result = conn
-            .get_or_fetch(&key, get_data, expire_seconds as usize)
-            .await?;
-        assert_eq!(result, hello_world(n));
+    let _: () = connection.del(&key).await.unwrap();
 
-        let result: Option<String> = conn.get(&key).await?;
-        assert_eq!(result.unwrap(), hello_world(n));
+    connection
+        .get_or_fetch(
+            key,
+            || async { computation::simple(0).await },
+            expire_seconds,
+        )
+        .await
+        .unwrap();
 
-        wait_cache_expire().await;
+    for n in 1..4 {
+        computation::wait_expire(expire_seconds).await;
+
+        let result = connection
+            .get_or_fetch(
+                &key,
+                move || async move { computation::simple(n).await },
+                expire_seconds,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            computation::result(n),
+            result,
+            "Should return new computed data: {}. Got {}",
+            computation::result(n),
+            result,
+        );
+
+        let result: Option<String> = connection.get(&key).await.unwrap();
+        let result = result.unwrap();
+        assert_eq!(
+            computation::result(n),
+            result,
+            "Should store cached data: {}, Got {}",
+            computation::result(n),
+            result
+        );
     }
 
     // Test that error are thrown properly
 
-    let _: () = conn.del(&key).await?;
+    let expire_seconds = 1;
 
-    let get_data = move || async move { anyhow::bail!("unable to load data") };
-    let result: Result<String> = conn
-        .get_or_fetch(&key, get_data, expire_seconds as usize)
+    let _: () = connection.del(&key).await.unwrap();
+
+    let result: Result<String> = connection
+        .get_or_fetch(
+            &key,
+            || async { computation::fail("unable to load data").await },
+            expire_seconds,
+        )
         .await;
+    let err = result.unwrap_err();
 
-    assert_eq!(
-        format!("{:?}", result.unwrap_err()),
-        "Data(unable to load data)"
-    );
+    assert_eq!(format!("{:?}", err), "Data(unable to load data)");
+
+    // Test that error are thrown if refreshing fail
+
+    let expire_seconds = 1;
+
+    let _: () = connection.del(key).await.unwrap();
+
+    connection
+        .get_or_fetch(
+            key,
+            || async { computation::simple(0).await },
+            expire_seconds,
+        )
+        .await
+        .unwrap();
+
+    computation::wait_expire(expire_seconds).await;
+
+    let result: Result<String> = connection
+        .get_or_fetch(
+            &key,
+            || async { computation::fail("unable to load data").await },
+            expire_seconds,
+        )
+        .await;
+    let err = result.unwrap_err();
+
+    assert_eq!(format!("{:?}", err), "Data(unable to load data)");
 
     Ok(())
 }
@@ -87,68 +171,256 @@ async fn test_get_or_fetch() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_get_or_refresh() -> Result<()> {
-    let pool = load_config::<ExampleConfig>(Environment::Test)?
-        .redis
-        .init_pool()
-        .await?;
-
-    let mut conn = pool.get().await?;
+    let mut connection = connection::get_redis_connection().await.unwrap();
 
     let key = "TEST_GET_OR_REFRESH";
+
+    // Test that it properly return cached data
+
+    let get_cached_data_count = 5;
+    let expire_seconds = 1000;
+
+    let _: () = connection.del(key).await.unwrap();
+
+    let start_test_when = unix_time_now_millis();
+
+    let result = connection::get_redis_connection()
+        .await
+        .unwrap()
+        .get_or_refresh(key, || async { computation::long(0).await }, expire_seconds)
+        .await
+        .unwrap();
+    assert_eq!(
+        computation::result(0),
+        result,
+        "Should return computed data: {}. Got {}",
+        computation::result(0),
+        result,
+    );
+
+    let result: Option<String> = connection.hget(key, "value").await.unwrap();
+    let result = result.unwrap();
+    assert_eq!(
+        computation::result(0),
+        result,
+        "Should return cached data: {}. Got {}",
+        computation::result(0),
+        result,
+    );
+
+    for _ in 0..get_cached_data_count {
+        let result = connection::get_redis_connection()
+            .await
+            .unwrap()
+            .get_or_refresh(key, || async { computation::long(1).await }, expire_seconds)
+            .await
+            .unwrap();
+        assert_eq!(
+            computation::result(0),
+            result,
+            "Should return cached data: {}. Got {}",
+            computation::result(0),
+            result,
+        );
+    }
+
+    let time_used_millis = unix_time_now_millis() - start_test_when;
+
+    assert!(
+        time_used_millis
+            < computation::LONG_COMPUTATION_TIME_MILLIS as u128 * get_cached_data_count,
+        "Computation should be computed once if ttl is long enough. ideal computation time: {} ms. time_used: {} ms",
+        computation::LONG_COMPUTATION_TIME_MILLIS,
+        time_used_millis
+    );
+
+    // Test that refresh works if data is expired
+
     let expire_seconds = 1;
 
-    fn hello_world(time: i32) -> String {
-        format!("HELLO WORLD {time}")
-    }
+    let _: () = connection.del(key).await.unwrap();
 
-    let wait_cache_expire = || async {
-        tokio::time::sleep(Duration::from_secs(expire_seconds + 1)).await;
-    };
+    connection::get_redis_connection()
+        .await
+        .unwrap()
+        .get_or_refresh(
+            key,
+            || async { computation::simple(0).await },
+            expire_seconds,
+        )
+        .await
+        .unwrap();
 
-    // Test that caching works
+    for n in 1..4 {
+        computation::wait_expire(expire_seconds).await;
 
-    let _: () = conn.del(&key).await?;
+        let result = connection::get_redis_connection()
+            .await
+            .unwrap()
+            .get_or_refresh(
+                key,
+                move || async move { computation::simple(n).await },
+                expire_seconds as usize,
+            )
+            .await
+            .unwrap();
 
-    let get_data = move || async move { anyhow::Ok(hello_world(0)) };
-    conn.get_or_refresh(&key, get_data, 1000).await?;
-    for n in 0..5 {
-        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
-        let result = conn
-            .get_or_refresh(&key, get_data, expire_seconds as usize)
-            .await?;
-        assert_eq!(result, hello_world(0));
-    }
+        assert_eq!(
+            computation::result(n - 1),
+            result,
+            "Should return expired cached data: {}. Got {}",
+            computation::result(n - 1),
+            result,
+        );
 
-    // Test that expire strategy works
-
-    let _: () = conn.del(&key).await?;
-
-    for n in 0..3 {
-        let get_data = move || async move { anyhow::Ok(hello_world(n)) };
-        let result = conn
-            .get_or_refresh(&key, get_data, expire_seconds as usize)
-            .await?;
-        assert_eq!(result, hello_world(max(n - 1, 0)));
-
-        let result: Option<String> = conn.hget(&key, "value").await?;
-        assert_eq!(result.unwrap(), hello_world(n));
-
-        wait_cache_expire().await;
+        // This assertion might be flaky depends on if redis successfully cached data within
+        // wait_simple timeframe. If this happens, kindly increase BUFFER_COMPUTATION_TIME_MILLIS
+        computation::wait_simple().await;
+        let result: Option<String> = connection.hget(key, "value").await.unwrap();
+        let result = result.unwrap();
+        assert_eq!(
+            computation::result(n),
+            result,
+            "Should store cached data: {}, Got {}",
+            computation::result(n),
+            result
+        );
     }
 
     // Test that error are thrown properly
 
-    let _: () = conn.del(&key).await?;
+    let expire_seconds = 1;
 
-    let get_data = move || async move { anyhow::bail!("unable to load data") };
-    let result: Result<String> = conn
-        .get_or_refresh(&key, get_data, expire_seconds as usize)
+    let _: () = connection.del(key).await.unwrap();
+
+    let result: Result<String> = connection::get_redis_connection()
+        .await
+        .unwrap()
+        .get_or_refresh(
+            key,
+            || async { computation::fail("unable to load data").await },
+            expire_seconds as usize,
+        )
         .await;
+    let err = result.unwrap_err();
+
+    assert_eq!(format!("{:?}", err), "Data(unable to load data)");
+
+    // Test that error are *NOT* thrown if refreshing fail
+
+    let expire_seconds = 1;
+
+    let _: () = connection.del(key).await.unwrap();
+
+    connection::get_redis_connection()
+        .await
+        .unwrap()
+        .get_or_refresh(
+            key,
+            || async { computation::simple(0).await },
+            expire_seconds as usize,
+        )
+        .await
+        .unwrap();
+
+    computation::wait_expire(expire_seconds).await;
+
+    let result = connection::get_redis_connection()
+        .await
+        .unwrap()
+        .get_or_refresh(
+            key,
+            || async { computation::fail("unable to load data").await },
+            expire_seconds as usize,
+        )
+        .await
+        .unwrap();
 
     assert_eq!(
-        format!("{:?}", result.unwrap_err()),
-        "Data(unable to load data)"
+        computation::result(0),
+        result,
+        "Should return expired cached data: {}. Got {}",
+        computation::result(0),
+        result,
     );
 
     Ok(())
+}
+
+mod computation {
+    use std::time::Duration;
+
+    use anyhow::bail;
+    use anyhow::Ok;
+    use anyhow::Result;
+    use tokio::time::sleep;
+
+    pub(super) static LONG_COMPUTATION_TIME_MILLIS: u64 = 3000;
+    pub(super) static BUFFER_COMPUTATION_TIME_MILLIS: u64 = 1000;
+
+    pub(super) async fn simple(input: i32) -> Result<String> {
+        Ok(result(input))
+    }
+    pub(super) async fn long(input: i32) -> Result<String> {
+        sleep(Duration::from_millis(LONG_COMPUTATION_TIME_MILLIS)).await;
+        Ok(result(input))
+    }
+    pub(super) async fn fail(message: &'static str) -> Result<String> {
+        bail!(message)
+    }
+
+    pub(super) fn result(input: i32) -> String {
+        format!("HELLO WORLD {input}")
+    }
+
+    pub(super) async fn wait_expire(cache_ttl: usize) {
+        sleep(Duration::from_secs(cache_ttl as u64)).await;
+        sleep(Duration::from_millis(BUFFER_COMPUTATION_TIME_MILLIS)).await;
+    }
+
+    pub(super) async fn wait_simple() {
+        tokio::time::sleep(Duration::from_millis(BUFFER_COMPUTATION_TIME_MILLIS)).await;
+    }
+}
+
+mod connection {
+    use once_cell::sync::Lazy;
+    use tokio::sync::OnceCell;
+
+    use avantis_utils::config::load_config;
+    use avantis_utils::config::Environment;
+    use avantis_utils::redis::Connection;
+    use avantis_utils::redis::Pool;
+    use avantis_utils::redis::RedisConfig;
+
+    #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+    struct ExampleConfig {
+        redis: RedisConfig,
+    }
+
+    impl ExampleConfig {
+        fn load(environment: Environment) -> anyhow::Result<Self> {
+            load_config(environment)
+        }
+    }
+
+    static CONFIG: Lazy<ExampleConfig> =
+        Lazy::new(|| ExampleConfig::load(Environment::Test).unwrap());
+
+    static REDIS_POOL: OnceCell<Pool> = OnceCell::const_new();
+    pub(super) async fn get_redis_connection() -> anyhow::Result<Connection> {
+        REDIS_POOL
+            .get_or_init(|| async { CONFIG.redis.init_pool().await.unwrap() })
+            .await
+            .get()
+            .await
+            .map_err(|err| err.into())
+    }
+}
+
+fn unix_time_now_millis() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis()
 }
