@@ -51,7 +51,7 @@ async fn hello_world(time: usize) -> anyhow::Result<String> {
 }
 
 static CONFIG: Lazy<ExampleConfig> =
-    Lazy::new(|| ExampleConfig::load(Environment::Development).unwrap());
+    Lazy::new(|| ExampleConfig::load(Environment::Develop).unwrap());
 
 static REDIS_POOL: OnceCell<Pool> = OnceCell::const_new();
 pub(crate) async fn get_redis_connection() -> anyhow::Result<Connection> {

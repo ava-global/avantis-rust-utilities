@@ -5,25 +5,25 @@ use avantis_utils::redis;
 use once_cell::sync::Lazy;
 
 static CONFIG: Lazy<ExampleConfig> =
-    Lazy::new(|| ExampleConfig::load(Environment::Development).unwrap());
+    Lazy::new(|| ExampleConfig::load(Environment::Develop).unwrap());
 
 fn main() {
     // This is an example. DO NOT ACTUALLY SET YOUR PASSWORD IN YOUR CODEBASE.
     // please refer to security best practice for your application deployment.
-    std::env::set_var("APP__DB__PASSWORD", "supersecurepassword");
+    std::env::set_var("APP_DB__PASSWORD", "supersecurepassword");
 
     // This will load config from
     //   1. config/base
-    //   2. config/development
+    //   2. config/develop
     //   3. overriding env variables
-    println!("{:#?}", ExampleConfig::load(Environment::Development));
+    println!("{:#?}", ExampleConfig::load(Environment::Develop));
 
     // Works with different config file format like toml and json as well.
     println!("{:#?}", ExampleConfig::load(Environment::Test));
     println!("{:#?}", ExampleConfig::load(Environment::Production));
 
     // Works with environment selected from env too.
-    std::env::set_var("APP_ENVIRONMENT", "development");
+    std::env::set_var("APP_ENVIRONMENT", "develop");
     println!(
         "{:#?}",
         ExampleConfig::load(Environment::from_env().unwrap())
@@ -31,7 +31,7 @@ fn main() {
 
     setup_db();
 
-    std::env::remove_var("APP__DB__PASSWORD");
+    std::env::remove_var("APP_DB__PASSWORD");
     std::env::remove_var("APP_ENVIRONMENT");
 }
 
