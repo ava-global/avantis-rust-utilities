@@ -4,3 +4,11 @@ user = "username"
 password = "REPLACE_ME"
 db_name = "my_db"
 max_connections = 30
+
+[redis]
+hosts = [
+    "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379",
+    "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379"
+]
+max_connections = 2
+expire_seconds = 1
