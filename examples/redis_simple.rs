@@ -4,9 +4,8 @@ use ::redis::AsyncCommands;
 use anyhow::Result;
 use avantis_utils::config::load_config;
 use avantis_utils::config::Environment;
-use avantis_utils::redis;
 use avantis_utils::redis::Connection;
-use avantis_utils::redis::GetOrFetchExt;
+use avantis_utils::redis::GetOrRefreshExt;
 use avantis_utils::redis::Pool;
 use avantis_utils::redis::RedisConfig;
 use once_cell::sync::Lazy;
@@ -23,10 +22,12 @@ async fn main() -> Result<()> {
 
     println!("name: {name}");
 
-    redis
+    get_redis_connection()
+        .await?
         .get_or_refresh("text", || async { hello_world(0).await }, 1)
         .await?;
-    let text: String = redis
+    let text: String = get_redis_connection()
+        .await?
         .get_or_refresh("text", || async { hello_world(1).await }, 1)
         .await?;
 
@@ -34,10 +35,12 @@ async fn main() -> Result<()> {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    redis
+    get_redis_connection()
+        .await?
         .get_or_refresh("text", || async { hello_world(2).await }, 1)
         .await?;
-    let text: String = redis
+    let text: String = get_redis_connection()
+        .await?
         .get_or_refresh("text", || async { hello_world(3).await }, 1)
         .await?;
 

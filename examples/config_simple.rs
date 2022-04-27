@@ -47,7 +47,7 @@ fn setup_db() {
 struct ExampleConfig {
     log_level: String,
     db: db::DatabaseConfig,
-    redis: redis::connection::RedisConfig,
+    redis: redis::RedisConfig,
 }
 
 impl ExampleConfig {
