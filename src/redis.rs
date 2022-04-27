@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use bb8_redis::bb8::RunError;
-use bb8_redis::redis::RedisError;
-use redis::{AsyncCommands, FromRedisValue, ToRedisArgs};
+use redis::{AsyncCommands, ErrorKind, FromRedisValue, RedisError, ToRedisArgs};
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::json;
 use std::{
     future::Future,
+    str::from_utf8,
     time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
@@ -235,20 +237,20 @@ mod connection {
 
     #[derive(Clone, Debug, PartialEq, Deserialize)]
     pub struct RedisConfig {
-        pub hosts: Vec<String>,
+        pub hosts_csv: String,
         pub expire_seconds: usize,
         pub max_connections: u32,
     }
 
     impl RedisConfig {
-        fn hosts_str(&self) -> Vec<&str> {
-            self.hosts.iter().map(AsRef::as_ref).collect()
+        fn hosts(&self) -> Vec<&str> {
+            self.hosts_csv.split(',').collect()
         }
 
         pub async fn init_pool(&self) -> Result<Pool> {
             Ok(bb8::Pool::builder()
                 .max_size(self.max_connections)
-                .build(RedisClusterConnectionManager::new(self.hosts_str())?)
+                .build(RedisClusterConnectionManager::new(self.hosts())?)
                 .await?)
         }
     }

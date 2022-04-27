@@ -7,10 +7,7 @@
     "max_connections": 30
   },
   "redis": {
-    "hosts": [
-      "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379",
-      "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379"
-    ],
+    "hosts_csv": "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379,redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379",
     "max_connections": 2,
     "expire_seconds": 3600
   }
