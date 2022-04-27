@@ -42,6 +42,10 @@ impl GetOrFetchExt for redis_cluster_async::Connection {
         F: FnOnce() -> Fut + Send,
         Fut: Future<Output = anyhow::Result<V>> + Send,
     {
+        if cfg!(test) {
+            return Ok(data_loader().await?);
+        }
+
         match self.get(&key).await {
             Ok(Some(bytes)) => Ok(bytes),
             Ok(None) => {
@@ -84,6 +88,10 @@ impl GetOrRefreshExt for connection::Connection {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = anyhow::Result<V>> + Send,
     {
+        if cfg!(test) {
+            return Ok(data_loader().await?);
+        }
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
