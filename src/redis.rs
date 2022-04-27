@@ -7,11 +7,15 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
+
+// TODO: tracing error wont works. find a new way to communicate to user that it works or not
 use tracing::error;
 
 pub use connection::Connection;
 pub use connection::Pool;
 pub use connection::RedisConfig;
+
+// TODO: add tests for VecRedisValue
 
 #[async_trait]
 pub trait GetOrFetchExt: AsyncCommands {
@@ -153,6 +157,67 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+macro_rules! invalid_type_error {
+    ($v:expr, $det:expr) => {
+        RedisError::from((
+            ErrorKind::TypeError,
+            "Response was of incompatible type",
+            format!("{:?} (response was {:?})", $det, $v),
+        ))
+    };
+}
+
+pub struct VecRedisValue<T: Serialize + DeserializeOwned>(pub Vec<T>);
+
+impl<T: Serialize + DeserializeOwned> std::ops::Deref for VecRedisValue<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Serialize + DeserializeOwned> From<Vec<T>> for VecRedisValue<T> {
+    fn from(value: Vec<T>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: Serialize + DeserializeOwned> ToRedisArgs for VecRedisValue<T> {
+    fn write_redis_args<W>(&self, out: &mut W)
+    where
+        W: ?Sized + redis::RedisWrite,
+    {
+        let string = json!(self.0).to_string();
+        out.write_arg(string.as_bytes())
+    }
+}
+
+impl<T: Serialize + DeserializeOwned> FromRedisValue for VecRedisValue<T> {
+    fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
+        match *v {
+            redis::Value::Data(ref bytes) => {
+                let json = from_utf8(bytes)?.to_string();
+                let result = serde_json::from_str::<Vec<T>>(&json).map_err(|err| {
+                    invalid_type_error!(
+                        v,
+                        format!(
+                            "Could not deserialize into {} struct with err {}.",
+                            stringify!($t),
+                            err
+                        )
+                    )
+                })?;
+                Ok(VecRedisValue(result))
+            }
+            _ => Err(invalid_type_error!(
+                v,
+                format!("Could not deserialize into {} struct.", stringify!($t))
+            )),
+        }
+    }
+}
 
 mod connection {
     use async_trait::async_trait;
