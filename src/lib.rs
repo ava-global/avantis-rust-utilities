@@ -6,3 +6,5 @@ pub mod config;
 pub mod db;
 #[cfg(feature = "redis-utils")]
 pub mod redis;
+
+pub mod pagination;
