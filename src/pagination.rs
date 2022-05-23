@@ -1,10 +1,22 @@
 pub use avantis_utils_macro::PaginatedQuery;
 
+// Example:
+// uncomment this to try
+//
+// #[derive(Default, Debug, PartialEq, PaginatedQuery)]
+// struct Foo {
+//     #[limit(default = 100)]
+//     pub limit_t: Option<i32>,
+//     #[offset(default = 0)]
+//     pub offset_t: Option<i32>,
+// }
+
 pub trait PaginatedQuery {
     fn limit(&self) -> i32;
     fn offset(&self) -> i32;
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
