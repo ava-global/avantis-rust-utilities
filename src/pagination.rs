@@ -1,4 +1,4 @@
-pub use avantis_utils_macro::PaginatedQuery;
+pub use avantis_utils_derive::PaginatedQuery;
 
 // Example:
 // uncomment this to try
