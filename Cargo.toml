@@ -17,7 +17,7 @@ bb8-redis = {version = "0.11.0", optional = true}
 config = {version = "0.13", optional = true}
 redis = {version = "0.21.5", features = ["cluster"], optional = true}
 redis_cluster_async = {version = "0.7.0", optional = true}
-serde = {version = "1.0", optional = true}
+serde = {version = "1.0", features = ["derive"], optional = true}
 serde_json = {version = "1.0", optional = true}
 sqlx = {version = "0.5", features = ["postgres", "runtime-tokio-rustls"], optional = true}
 strum = {version = "0.24", features = ["derive"], optional = true}
@@ -25,17 +25,20 @@ tokio = {version = "1.17.0", features = ["rt", "macros"], optional = true}
 tracing = {version = "0.1.33", optional = true}
 thiserror = {version = "1.0", optional = true}
 
-avantis-utils-macro = { path = "avantis-utils-macro" }
+avantis-utils-macro = { path = "avantis-utils-macro", optional = true }
 
 [dev-dependencies]
 once_cell = "1.0"
 serial_test = "0.6"
+tokio = {version = "1.17.0", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"
 
 [features]
+all = ["cfg", "db", "redis-utils", "pagination"]
 cfg = ["config", "strum", "serde", "anyhow"]
 db = ["sqlx", "serde"]
-default = ["cfg", "db", "redis-utils"]
 redis-utils = [
+    "anyhow",
     "redis",
     "redis_cluster_async",
     "bb8-redis",
@@ -46,3 +49,4 @@ redis-utils = [
     "serde_json",
     "thiserror"
 ]
+pagination = ["avantis-utils-macro"]
