@@ -1,7 +1,9 @@
 [package]
-name = "avantis-utils-macro"
+name = "avantis-utils-derive"
 version = "0.1.0"
 edition = "2021"
+description = "Derive macro for avantis-utils crate"
+license = "MIT"
 
 [lib]
 proc-macro = true
