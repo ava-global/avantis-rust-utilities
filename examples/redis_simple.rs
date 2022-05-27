@@ -6,13 +6,13 @@ async fn main() -> Result<()> {
     inner::main().await
 }
 
-#[cfg(all(feature = "cfg", feature = "redis-utils"))]
+#[cfg(all(feature = "config", feature = "redis"))]
 mod inner {
     use super::*;
 
     use std::time::Duration;
 
-    use ::redis::AsyncCommands;
+    use ::redis_rs::AsyncCommands;
     use avantis_utils::config::load_config;
     use avantis_utils::config::Environment;
     use avantis_utils::redis::Connection;
@@ -87,12 +87,12 @@ mod inner {
     }
 }
 
-#[cfg(not(all(feature = "cfg", feature = "redis-utils")))]
+#[cfg(not(all(feature = "config", feature = "redis")))]
 mod inner {
     use super::*;
 
     pub async fn main() -> Result<()> {
-        println!("Please pass --features cfg,redis-utils to cargo when trying this example.");
+        println!("Please pass --features config,redis to cargo when trying this example.");
 
         Ok(())
     }
