@@ -28,11 +28,11 @@ use std::str::FromStr;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use config::Config;
-use config::Environment as EnvironmentVariables;
-use config::File;
-use config::FileFormat;
-use config::FileSourceFile;
+use config_rs::Config;
+use config_rs::Environment as EnvironmentVariables;
+use config_rs::File;
+use config_rs::FileFormat;
+use config_rs::FileSourceFile;
 use serde::Deserialize;
 use strum::EnumString;
 
@@ -84,9 +84,9 @@ pub fn load_config<'de, T: Deserialize<'de>>(environment: Environment) -> Result
 ///
 /// fn main() {
 ///     let config: MyConfig = load_custom_config(
-///         config::File::with_name("config/base"),
-///         config::File::with_name("config/test"),
-///         config::Environment::with_prefix("app").separator("__"),
+///         config_rs::File::with_name("config/base"),
+///         config_rs::File::with_name("config/test"),
+///         config_rs::Environment::with_prefix("app").separator("__"),
 ///     ).unwrap();
 ///
 ///     println!("{:?}", config);

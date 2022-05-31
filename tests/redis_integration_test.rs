@@ -1,6 +1,6 @@
-#![cfg(all(feature = "redis-utils", feature = "cfg"))]
+#![cfg(all(feature = "redis", feature = "config"))]
 
-use ::redis::AsyncCommands;
+use ::redis_rs::AsyncCommands;
 use avantis_utils::redis::GetOrFetchExt;
 use avantis_utils::redis::GetOrRefreshExt;
 use avantis_utils::redis::Result;

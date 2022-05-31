@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bb8_redis::bb8::RunError;
-use redis::{AsyncCommands, ErrorKind, FromRedisValue, RedisError, ToRedisArgs};
+use redis_rs::{AsyncCommands, ErrorKind, FromRedisValue, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
 use std::{
@@ -189,7 +189,7 @@ impl<T: Serialize + DeserializeOwned> From<Vec<T>> for VecRedisValue<T> {
 impl<T: Serialize + DeserializeOwned> ToRedisArgs for VecRedisValue<T> {
     fn write_redis_args<W>(&self, out: &mut W)
     where
-        W: ?Sized + redis::RedisWrite,
+        W: ?Sized + redis_rs::RedisWrite,
     {
         let string = json!(self.0).to_string();
         out.write_arg(string.as_bytes())
@@ -197,9 +197,9 @@ impl<T: Serialize + DeserializeOwned> ToRedisArgs for VecRedisValue<T> {
 }
 
 impl<T: Serialize + DeserializeOwned> FromRedisValue for VecRedisValue<T> {
-    fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
+    fn from_redis_value(v: &redis_rs::Value) -> redis_rs::RedisResult<Self> {
         match *v {
-            redis::Value::Data(ref bytes) => {
+            redis_rs::Value::Data(ref bytes) => {
                 let json = from_utf8(bytes)?.to_string();
                 let result = serde_json::from_str::<Vec<T>>(&json).map_err(|err| {
                     invalid_type_error!(
@@ -224,10 +224,10 @@ impl<T: Serialize + DeserializeOwned> FromRedisValue for VecRedisValue<T> {
 mod connection {
     use async_trait::async_trait;
     use bb8_redis::bb8;
-    use redis::aio::ConnectionLike;
-    use redis::IntoConnectionInfo;
-    use redis::RedisError;
-    use redis::RedisResult;
+    use redis_rs::aio::ConnectionLike;
+    use redis_rs::IntoConnectionInfo;
+    use redis_rs::RedisError;
+    use redis_rs::RedisResult;
     use serde::Deserialize;
 
     use super::Result;
@@ -278,7 +278,7 @@ mod connection {
 
         async fn is_valid(&self, connection: &mut Self::Connection) -> RedisResult<()> {
             connection
-                .req_packed_command(&redis::cmd("PING"))
+                .req_packed_command(&redis_rs::cmd("PING"))
                 .await
                 .and_then(check_is_pong)
         }
@@ -288,11 +288,11 @@ mod connection {
         }
     }
 
-    fn check_is_pong(value: redis::Value) -> RedisResult<()> {
+    fn check_is_pong(value: redis_rs::Value) -> RedisResult<()> {
         match value {
-            redis::Value::Status(string) if &string == "PONG" => RedisResult::Ok(()),
+            redis_rs::Value::Status(string) if &string == "PONG" => RedisResult::Ok(()),
             _ => RedisResult::Err(RedisError::from((
-                redis::ErrorKind::ResponseError,
+                redis_rs::ErrorKind::ResponseError,
                 "ping request",
             ))),
         }
