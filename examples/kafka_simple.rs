@@ -26,23 +26,27 @@ mod inner {
 
     pub async fn main() -> Result<()> {
         let kafka_producer1 = kafka_producer::KafkaProducerImpl::new(CONFIG.kafka.clone());
-        kafka_producer1.publish(
+        kafka_producer1.send(
             KAFKA_TOPIC.to_string(),
-            "test message".as_bytes().to_vec(),
-            "test massage key".to_string(),
+            kafka::KafkaKeyMessagePair {
+                key: "test key".to_string(),
+                message: kafka::KafkaMessage {
+                    value: "test message".as_bytes().to_vec(),
+                },
+            },
         );
 
-        let res = kafka_producer1.bulk_publish(
+        let res = kafka_producer1.bulk_send_and_flush(
             KAFKA_TOPIC.to_string(),
             &vec![
                 kafka::KafkaKeyMessagePair {
-                    key: "test key bulk 1".to_string(),
+                    key: "test key".to_string(),
                     message: kafka::KafkaMessage {
                         value: "test message bulk 1".as_bytes().to_vec(),
                     },
                 },
                 kafka::KafkaKeyMessagePair {
-                    key: "test key bulk 2".to_string(),
+                    key: "test key".to_string(),
                     message: kafka::KafkaMessage {
                         value: "test message bulk 2".as_bytes().to_vec(),
                     },

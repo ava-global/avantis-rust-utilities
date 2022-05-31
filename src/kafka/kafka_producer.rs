@@ -9,7 +9,7 @@ use mockall::automock;
 use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
 use rdkafka::ClientConfig;
 
-use super::{Bytes, KafkaKeyMessagePair};
+use super::KafkaKeyMessagePair;
 
 pub struct KafkaProducerImpl {
     pub producer: BaseProducer,
@@ -24,10 +24,10 @@ impl Debug for KafkaProducerImpl {
 
 #[cfg_attr(test, automock)]
 pub trait KafkaProducer {
-    fn publish(&self, topic_name: String, bytes_message: Bytes, key: String);
+    fn send(&self, topic_name: String, bytes_message: KafkaKeyMessagePair);
+    fn send_and_flush(&self, topic_name: String, bytes_message: KafkaKeyMessagePair);
     fn flush(&self);
-    fn bulk_publish_deprecated(&self, topic_name: String, bytes_messages: &[(String, Bytes)]);
-    fn bulk_publish(
+    fn bulk_send_and_flush(
         &self,
         topic_name: String,
         bytes_messages: &[KafkaKeyMessagePair],
@@ -35,10 +35,10 @@ pub trait KafkaProducer {
 }
 
 impl KafkaProducer for KafkaProducerImpl {
-    fn publish(&self, topic_name: String, bytes_message: Bytes, key: String) {
+    fn send(&self, topic_name: String, bytes_message: KafkaKeyMessagePair) {
         let record = BaseRecord::to(topic_name.as_str())
-            .payload(&bytes_message)
-            .key(&key);
+            .payload(&bytes_message.message.value)
+            .key(&bytes_message.key);
         self.producer
             .send(record)
             .unwrap_or_else(|_| panic!("Cannot produce message to {}", topic_name));
@@ -51,23 +51,12 @@ impl KafkaProducer for KafkaProducerImpl {
         self.producer
             .flush(Duration::from_millis(self.setting.flush_duration_millis));
     }
-
-    fn bulk_publish_deprecated(&self, topic_name: String, bytes_messages: &[(String, Bytes)]) {
-        bytes_messages.iter().for_each(|data| {
-            let (key, message) = data;
-            let record = BaseRecord::to(topic_name.as_str())
-                .key(&key)
-                .payload(&message);
-            self.producer
-                .send(record)
-                .expect("Failed to enqueue message");
-        });
-
-        self.producer
-            .flush(Duration::from_millis(self.setting.flush_duration_millis))
+    fn send_and_flush(&self, topic_name: String, bytes_message: KafkaKeyMessagePair) {
+        self.send(topic_name, bytes_message);
+        self.flush();
     }
 
-    fn bulk_publish(
+    fn bulk_send_and_flush(
         &self,
         topic_name: String,
         bytes_messages: &[KafkaKeyMessagePair],

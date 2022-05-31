@@ -1,9 +1,12 @@
+use std::fmt::Debug;
 use std::future::Future;
 
 use std::time::Duration;
 
 use anyhow::Result;
-use rdkafka::consumer::{BaseConsumer, CommitMode, Consumer, ConsumerContext, Rebalance};
+use rdkafka::consumer::{
+    BaseConsumer, CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer,
+};
 use rdkafka::error::KafkaResult;
 use rdkafka::{ClientConfig, ClientContext, Message, TopicPartitionList};
 use tracing::{debug, error, info};
@@ -115,5 +118,57 @@ impl KafkaConsumer {
                 Err(e) => error!("error commit message: {:?}", e),
             }
         }
+    }
+}
+
+pub async fn consume<Fut, T>(
+    bootstrap_server: &str,
+    group_id: &str,
+    topics: &[&str],
+    handler: impl Fn(T) -> Fut,
+) where
+    T: prost::Message + Default + Debug,
+    Fut: Future<Output = Result<()>>,
+{
+    let consumer: StreamConsumer = ClientConfig::new()
+        .set("group.id", group_id)
+        .set("bootstrap.servers", bootstrap_server)
+        .set("enable.partition.eof", "false")
+        .set("auto.offset.reset", "latest")
+        .set("session.timeout.ms", "6000")
+        .set("heartbeat.interval.ms", "1000")
+        .set("enable.auto.commit", "true")
+        .set("security.protocol", "ssl")
+        .create()
+        .expect("Consumer creation failed");
+
+    consumer
+        .subscribe(topics)
+        .expect("Can't subscribe to specified topics");
+
+    loop {
+        match consumer.recv().await {
+            Err(error) => error!("Kafka error: {}", error),
+            Ok(message) => {
+                if message.payload().is_none() {
+                    info!("No messages available right now");
+                    continue;
+                }
+
+                if let Some(payload) = message.payload() {
+                    let parsed_result = T::decode(payload);
+
+                    match parsed_result {
+                        Ok(parsed_payload) => {
+                            match handler(parsed_payload).await {
+                                Ok(_) => (),
+                                Err(e) => error!("failed to handle message due to: {}", e),
+                            };
+                        }
+                        Err(e) => error!("Error while deserializing message payload: {}", e),
+                    }
+                }
+            }
+        };
     }
 }
