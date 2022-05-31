@@ -1,12 +1,25 @@
-use std::convert::TryFrom;
-
 use anyhow::{anyhow, Result};
 use rdkafka::error::KafkaError;
 use rdkafka::message::BorrowedMessage;
 use rdkafka::Message;
+use serde::Deserialize;
+use std::convert::TryFrom;
 
 pub mod kafka_consumer;
 pub mod kafka_producer;
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct KafkaConfig {
+    pub brokers_csv: String,
+    pub flush_duration_millis: u64,
+    pub poll_duration_millis: u64,
+}
+
+impl KafkaConfig {
+    pub fn brokers(&self) -> Vec<&str> {
+        self.brokers_csv.split(',').collect()
+    }
+}
 
 pub type Bytes = Vec<u8>;
 pub struct KafkaMessage {

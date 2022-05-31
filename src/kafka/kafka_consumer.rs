@@ -8,8 +8,6 @@ use rdkafka::error::KafkaResult;
 use rdkafka::{ClientConfig, ClientContext, Message, TopicPartitionList};
 use tracing::{debug, error, info};
 
-use crate::config::setting::Settings;
-
 use super::KafkaMessage;
 
 pub struct KafkaConsumer {
@@ -58,10 +56,10 @@ impl ConsumerContext for ConsumerCallbackLogger {
 }
 
 impl KafkaConsumer {
-    pub fn new(settings: &Settings, topic: String, consumer_group: String) -> Self {
+    pub fn new(kafka_brokers_str: String, topic: String, consumer_group: String) -> Self {
         let consumer: BaseConsumer<ConsumerCallbackLogger> = ClientConfig::new()
             .set("group.id", consumer_group)
-            .set("bootstrap.servers", settings.kafka_brokers.join(","))
+            .set("bootstrap.servers", kafka_brokers_str)
             .set("enable.partition.eof", "false")
             .set("security.protocol", "ssl")
             .set("session.timeout.ms", "6000")

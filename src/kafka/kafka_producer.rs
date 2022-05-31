@@ -2,18 +2,17 @@ use std::fmt::{Debug, Formatter};
 
 use std::time::Duration;
 
+use super::KafkaConfig;
 #[cfg(test)]
 use mockall::automock;
 use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
 use rdkafka::ClientConfig;
 
-use crate::config::setting::{KafkaSetting, Settings};
-
 use super::{Bytes, KafkaKeyMessagePair};
 
 pub struct KafkaProducerImpl {
     pub producer: BaseProducer,
-    pub setting: KafkaSetting,
+    pub setting: KafkaConfig,
 }
 
 impl Debug for KafkaProducerImpl {
@@ -98,9 +97,9 @@ impl KafkaProducer for KafkaProducerImpl {
 }
 
 impl KafkaProducerImpl {
-    pub fn new(settings: &Settings) -> Self {
+    pub fn new(kafka_setting: KafkaConfig) -> Self {
         let producer = ClientConfig::new()
-            .set("bootstrap.servers", settings.kafka_brokers.join(","))
+            .set("bootstrap.servers", kafka_setting.brokers().join(","))
             .set("queue.buffering.max.messages", "1000000")
             .set("queue.buffering.max.ms", "5")
             .set("security.protocol", "ssl")
@@ -110,7 +109,7 @@ impl KafkaProducerImpl {
 
         Self {
             producer,
-            setting: settings.kafka_setting,
+            setting: kafka_setting,
         }
     }
 }
