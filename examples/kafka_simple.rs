@@ -9,7 +9,7 @@ async fn main() -> Result<()> {
 #[cfg(all(feature = "config", feature = "kafka"))]
 mod inner {
     use super::*;
-    pub const KAFKA_TOPIC: &str = "test.kafka_simple.avantis_rust_utils.example.topic";
+    pub const KAFKA_TOPIC: &str = "test.kafka_simple.avantis_rust_utils.topic";
     pub const KAFKA_CONSUMER_GROUP: &str = "test.kafka_simple.avantis_rust_utils.consumer_group";
 
     use avantis_utils::config::load_config;

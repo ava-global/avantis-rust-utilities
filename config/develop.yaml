@@ -14,3 +14,4 @@ kafka:
   brokers_csv: "REPLACE_WITH_KAFKA_URL1,REPLACE_WITH_KAFKA_URL2,REPLACE_WITH_KAFKA_URL3"
   flush_duration_millis : 10000
   poll_duration_millis: 1
+  security_protocol: "plaintext"

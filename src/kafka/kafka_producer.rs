@@ -3,6 +3,7 @@ use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 
 use super::KafkaConfig;
+use itertools::{Either, Itertools};
 #[cfg(test)]
 use mockall::automock;
 use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
@@ -71,28 +72,27 @@ impl KafkaProducer for KafkaProducerImpl {
         topic_name: String,
         bytes_messages: &[KafkaKeyMessagePair],
     ) -> anyhow::Result<()> {
-        let result: anyhow::Result<()> = bytes_messages
-            .iter()
-            .map(|data| {
-                // let (key, message) = data;
-                let key = &data.key;
-                let message = &data.message.value;
+        let r1 = bytes_messages.iter().map(|data| {
+            let record = BaseRecord::to(topic_name.as_str())
+                .key(&data.key)
+                .payload(&data.message.value);
 
-                let record = BaseRecord::to(topic_name.as_str())
-                    .key(&key)
-                    .payload(&message);
+            self.producer.send(record)
+        });
 
-                self.producer
-                    .send(record)
-                    .map_err(|error_pair| error_pair.0.into())
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map(|_| ());
+        let (_, failure): (Vec<_>, Vec<_>) = r1.partition_map(|r| match r {
+            Ok(a) => Either::Left(a),
+            Err(b) => Either::Right(b),
+        });
 
         self.producer
             .flush(Duration::from_millis(self.setting.flush_duration_millis));
 
-        result
+        if failure.is_empty() {
+            Ok(())
+        } else {
+            anyhow::bail!(format!("{:?}", failure))
+        }
     }
 }
 
@@ -102,7 +102,13 @@ impl KafkaProducerImpl {
             .set("bootstrap.servers", kafka_setting.brokers().join(","))
             .set("queue.buffering.max.messages", "1000000")
             .set("queue.buffering.max.ms", "5")
-            .set("security.protocol", "ssl")
+            .set(
+                "security.protocol",
+                kafka_setting
+                    .security_protocol
+                    .clone()
+                    .unwrap_or("ssl".to_string()),
+            )
             .set("log.connection.close", "false")
             .create()
             .expect("Producer creation error");
