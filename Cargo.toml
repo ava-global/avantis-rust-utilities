@@ -49,4 +49,7 @@ redis = [
     "serde_json",
     "thiserror"
 ]
+kafka-utils = [
+    "anyhow"
+]
 pagination = ["avantis-utils-derive"]
