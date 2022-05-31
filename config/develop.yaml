@@ -9,3 +9,8 @@ redis:
   hosts_csv: "redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379, redis://avantis-redis-dev-5295a48.3o3tur.clustercfg.apse1.cache.amazonaws.com:6379"
   max_connections: 2
   expire_seconds: 1
+
+kafka:
+  brokers_csv: "REPLACE_ME"
+  flush_duration_millis : 10000
+  poll_duration_millis: 1
