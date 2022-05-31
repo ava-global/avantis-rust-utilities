@@ -22,7 +22,7 @@ mod inner {
     use once_cell::sync::Lazy;
 
     static CONFIG: Lazy<ExampleConfig> =
-        Lazy::new(|| ExampleConfig::load(Environment::Local).unwrap());
+        Lazy::new(|| ExampleConfig::load(Environment::Develop).unwrap());
 
     pub async fn main() -> Result<()> {
         let kafka_producer1 = kafka_producer::KafkaProducerImpl::new(CONFIG.kafka.clone());
