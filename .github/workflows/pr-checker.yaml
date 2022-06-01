@@ -9,7 +9,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install latest nightly
+      - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
       
       - uses: Swatinem/rust-cache@v1
@@ -26,7 +26,7 @@ jobs:
       - name: Run test with code coverage
         run: cargo test
         env:
-          RUSTFLAGS: -Zinstrument-coverage
+          RUSTFLAGS: -C instrument-coverage
           LLVM_PROFILE_FILE: test-%p-%m.profraw
           APP_ENVIRONMENT: test
           
@@ -60,14 +60,30 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: actions-rs/toolchain@v1
+      - name: install rust toolchain
+        uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
-          override: true
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v1
 
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
+
+    publish:
+      needs: [test, audit, lint]
+      name: Publish
+      runs-on: ubuntu-20.04
+      steps:
+        - name: Checkout sources
+          uses: actions/checkout@v2
+
+        - name: Install rust toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            profile: minimal
+
+        - run: cargo publish --token ${CRATES_TOKEN} --dry-run
+          env:
+            CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
