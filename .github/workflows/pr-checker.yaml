@@ -70,20 +70,3 @@ jobs:
 
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
-
-    publish:
-      needs: [test, audit, lint]
-      name: Publish
-      runs-on: ubuntu-20.04
-      steps:
-        - name: Checkout sources
-          uses: actions/checkout@v2
-
-        - name: Install rust toolchain
-          uses: actions-rs/toolchain@v1
-          with:
-            profile: minimal
-
-        - run: cargo publish --token ${CRATES_TOKEN} --dry-run
-          env:
-            CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
