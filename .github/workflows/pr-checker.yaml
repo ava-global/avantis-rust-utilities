@@ -1,0 +1,72 @@
+name: pr-checker
+on:
+  - pull_request
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+      
+      - uses: Swatinem/rust-cache@v1
+
+      - name: Install grcov
+        run: |
+          wget https://github.com/mozilla/grcov/releases/download/v0.8.2/grcov-linux-x86_64.tar.bz2
+          tar -xf grcov-linux-x86_64.tar.bz2
+          mv grcov $HOME/.cargo/bin
+          
+      - name: Install llvm-tools
+        run: rustup component add llvm-tools-preview
+          
+      - name: Run test with code coverage
+        run: cargo test --lib
+        env:
+          RUSTFLAGS: -C instrument-coverage
+          LLVM_PROFILE_FILE: test-%p-%m.profraw
+          APP_ENVIRONMENT: test
+          
+      - name: Export lcov.info with grcov
+        run: grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore "/*" -o lcov.info
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          fail_ci_if_error: true
+
+  audit:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - uses: Swatinem/rust-cache@v1
+
+      - name: Audit security vulnerabilities
+        run: |
+          cargo install cargo-audit
+          cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2022-0014
+
+  lint: 
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v1
+
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings

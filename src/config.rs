@@ -59,8 +59,7 @@ use strum::EnumString;
 /// ```
 pub fn load_config<'de, T: Deserialize<'de>>(environment: Environment) -> Result<T> {
     let base_config_file = File::with_name("config/base").required(true);
-    let env_config_file =
-        File::with_name(&format!("config/{}", environment.to_string())).required(true);
+    let env_config_file = File::with_name(&format!("config/{}", environment)).required(true);
 
     let custom_env_vars = EnvironmentVariables::with_prefix("app")
         .prefix_separator("_")
@@ -97,7 +96,7 @@ pub fn load_custom_config<'de, T: Deserialize<'de>>(
     env_config_file: File<FileSourceFile, FileFormat>,
     custom_env_vars: EnvironmentVariables,
 ) -> Result<T> {
-    Ok(Config::builder()
+    Config::builder()
         .add_source(base_config_file)
         .add_source(env_config_file)
         .add_source(custom_env_vars)
@@ -109,7 +108,7 @@ pub fn load_custom_config<'de, T: Deserialize<'de>>(
                 std::any::type_name::<T>(),
                 err
             )
-        })?)
+        })
 }
 
 /// Application environment. Affect configuration file loaded by [load_config].
@@ -128,11 +127,6 @@ pub enum Environment {
     /// Develop environment. Will use `config/develop.[FORMAT]`.
     #[strum(serialize = "develop")]
     Develop,
-
-    /// Development environment. Will use `config/development.[FORMAT]`.
-    #[strum(serialize = "development")]
-    #[deprecated(since = "0.2.1", note = "please use `Develop` instead")]
-    Development,
 
     /// Production environment. Will use `config/production.[FORMAT]`.
     #[strum(serialize = "production")]
@@ -170,7 +164,7 @@ impl Environment {
                 Environment::from_str(&environment_string)
                     .map_err(|_| anyhow!("Unknown environment: {environment_string}"))
             })
-            .unwrap_or(Ok(Environment::default()))
+            .unwrap_or_else(|_| Ok(Environment::default()))
     }
 }
 
