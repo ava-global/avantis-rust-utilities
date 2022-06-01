@@ -13,7 +13,7 @@ pub struct KafkaConfig {
     pub brokers_csv: String,
     pub flush_duration_millis: u64,
     pub poll_duration_millis: u64,
-    pub security_protocol: Option<String>
+    pub security_protocol: Option<String>,
 }
 
 impl KafkaConfig {

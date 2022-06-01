@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use super::KafkaConfig;
 use itertools::{Either, Itertools};
-#[cfg(test)]
-use mockall::automock;
+
 use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
 use rdkafka::ClientConfig;
 
@@ -22,7 +21,6 @@ impl Debug for KafkaProducerImpl {
     }
 }
 
-#[cfg_attr(test, automock)]
 pub trait KafkaProducer {
     fn send(&self, topic_name: String, bytes_message: KafkaKeyMessagePair);
     fn send_and_flush(&self, topic_name: String, bytes_message: KafkaKeyMessagePair);
@@ -96,7 +94,7 @@ impl KafkaProducerImpl {
                 kafka_setting
                     .security_protocol
                     .clone()
-                    .unwrap_or("ssl".to_string()),
+                    .unwrap_or_else(|| "ssl".to_string()),
             )
             .set("log.connection.close", "false")
             .create()
