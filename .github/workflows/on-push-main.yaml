@@ -87,6 +87,6 @@ jobs:
         with:
           profile: minimal
 
-      - run: cargo publish --token ${CRATES_TOKEN}
+      - run: cargo publish --token ${CRATE_TOKEN}
         env:
-          CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
+          CRATES_TOKEN: ${{ secrets.CRATE_TOKEN }}
