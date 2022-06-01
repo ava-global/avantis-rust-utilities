@@ -14,53 +14,54 @@ mod inner {
 
     use avantis_utils::config::load_config;
     use avantis_utils::config::Environment;
-    use avantis_utils::kafka;
-    use avantis_utils::kafka::kafka_consumer;
-    use avantis_utils::kafka::kafka_producer;
-    use avantis_utils::kafka::kafka_producer::KafkaProducer;
+    use avantis_utils::kafka::consumer::KafkaConsumer;
+    use avantis_utils::kafka::producer::KafkaProducer;
+    use avantis_utils::kafka::producer::KafkaProducerImpl;
     use avantis_utils::kafka::KafkaConfig;
+    use avantis_utils::kafka::KafkaKeyMessagePair;
+    use avantis_utils::kafka::KafkaMessage;
     use once_cell::sync::Lazy;
 
     static CONFIG: Lazy<ExampleConfig> =
         Lazy::new(|| ExampleConfig::load(Environment::Develop).unwrap());
 
     pub async fn main() -> Result<()> {
-        let kafka_producer1 = kafka_producer::KafkaProducerImpl::new(CONFIG.kafka.clone());
-        kafka_producer1.send(
+        let kafka_producer = KafkaProducerImpl::new(CONFIG.kafka.clone());
+        kafka_producer.send(
             KAFKA_TOPIC.to_string(),
-            kafka::KafkaKeyMessagePair {
+            KafkaKeyMessagePair {
                 key: "test key".to_string(),
-                message: kafka::KafkaMessage {
+                message: KafkaMessage {
                     value: "test message".as_bytes().to_vec(),
                 },
             },
         );
 
-        let res = kafka_producer1.bulk_send_and_flush(
+        let send_results = kafka_producer.bulk_send_and_flush(
             KAFKA_TOPIC.to_string(),
             &vec![
-                kafka::KafkaKeyMessagePair {
+                KafkaKeyMessagePair {
                     key: "test key".to_string(),
-                    message: kafka::KafkaMessage {
+                    message: KafkaMessage {
                         value: "test message bulk 1".as_bytes().to_vec(),
                     },
                 },
-                kafka::KafkaKeyMessagePair {
+                KafkaKeyMessagePair {
                     key: "test key".to_string(),
-                    message: kafka::KafkaMessage {
+                    message: KafkaMessage {
                         value: "test message bulk 2".as_bytes().to_vec(),
                     },
                 },
             ],
         );
-        println!("bulk publish result {:?}", &res);
+        println!("bulk publish result {:?}", &send_results);
 
-        let kafka_consumer1 = kafka_consumer::KafkaConsumer::new(
+        let kafka_consumer = KafkaConsumer::new(
             CONFIG.kafka.brokers_csv.to_owned(),
             KAFKA_TOPIC.to_owned(),
             KAFKA_CONSUMER_GROUP.to_owned(),
         );
-        let _ = kafka_consumer1
+        let _ = kafka_consumer
             .try_consume(|message| async move {
                 println!("consume message {:?}", std::str::from_utf8(&message.value));
                 Ok(())

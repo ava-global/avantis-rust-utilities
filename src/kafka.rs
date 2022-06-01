@@ -5,8 +5,8 @@ use rdkafka::Message;
 use serde::Deserialize;
 use std::convert::TryFrom;
 
-pub mod kafka_consumer;
-pub mod kafka_producer;
+pub mod consumer;
+pub mod producer;
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct KafkaConfig {
