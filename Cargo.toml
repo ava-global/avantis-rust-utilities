@@ -31,6 +31,7 @@ thiserror = {version = "1.0", optional = true}
 tokio = {version = "1.17.0", features = ["rt", "macros"], optional = true}
 tracing = {version = "0.1.33", optional = true}
 prost = {version = "0.10.4", optional = true}
+bytes = "1.1.0"
 
 avantis-utils-derive = {path = "./avantis-utils-derive", version = "0.1.0", optional = true}
 
@@ -46,9 +47,13 @@ db_sqlx = ["sqlx", "serde"]
 default = ["config", "db_sqlx", "redis", "pagination", "kafka"]
 kafka = [
   "anyhow",
+  "thiserror",
+  "async-trait",
   "itertools",
   "rdkafka",
-  "prost"
+  "prost",
+  "tracing",
+  "serde",
 ]
 pagination = ["avantis-utils-derive"]
 redis = [
