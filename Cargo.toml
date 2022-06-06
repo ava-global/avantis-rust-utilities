@@ -8,7 +8,7 @@ license = "MIT"
 name = "avantis-utils"
 readme = "README.md"
 repository = "https://github.com/ava-global/avantis-rust-utilities"
-version = "0.4.2"
+version = "0.4.3"
 
 [dependencies]
 itertools = {version = "0.10.3", optional = true}
@@ -38,7 +38,7 @@ avantis-utils-derive = {path = "./avantis-utils-derive", version = "0.1.0", opti
 [dev-dependencies]
 anyhow = "1.0"
 once_cell = "1.0"
-serial_test = "0.6"
+serial_test = "0.7"
 tokio = {version = "1.17.0", features = ["rt-multi-thread", "macros"]}
 
 [features]

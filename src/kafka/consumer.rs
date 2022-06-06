@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use prost::DecodeError;
 use rdkafka::config::FromClientConfig;
-use rdkafka::consumer::DefaultConsumerContext;
+use rdkafka::config::FromClientConfigAndContext;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
 use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::BorrowedMessage;
@@ -16,10 +16,13 @@ use tracing::{debug, error, info};
 
 use super::KafkaConfig;
 
-pub use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
+pub use rdkafka::consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer};
 
 impl KafkaConfig {
-    pub fn consumer_config<T: FromClientConfig>(&self, group_id: &str) -> T {
+    pub fn consumer_config<T>(&self, group_id: &str) -> T
+    where
+        T: FromClientConfig,
+    {
         ClientConfig::new()
             .set("group.id", group_id)
             .set("bootstrap.servers", &self.brokers_csv)
@@ -69,7 +72,7 @@ where
     }
 }
 
-impl ConsumerExt for StreamConsumer {}
+impl<C: ConsumerContext, R> ConsumerExt<C> for StreamConsumer<C, R> {}
 
 fn decode_protobuf<T>(message: &BorrowedMessage<'_>) -> Result<T, Error>
 where
@@ -92,11 +95,11 @@ pub enum Error {
     ProcessError(String),
 }
 
-pub struct ConsumerCallbackLogger;
+pub struct LoggingConsumerContext;
 
-impl ClientContext for ConsumerCallbackLogger {}
+impl ClientContext for LoggingConsumerContext {}
 
-impl ConsumerContext for ConsumerCallbackLogger {
+impl ConsumerContext for LoggingConsumerContext {
     fn pre_rebalance(&self, rebalance: &Rebalance) {
         match rebalance {
             Rebalance::Assign(tpl) => {

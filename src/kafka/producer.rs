@@ -7,7 +7,10 @@ pub use rdkafka::producer::{FutureProducer, FutureRecord};
 pub use rdkafka::util::Timeout;
 
 impl KafkaConfig {
-    pub fn producer_config<T: FromClientConfig>(&self) -> T {
+    pub fn producer_config<T>(&self) -> T
+    where
+        T: FromClientConfig,
+    {
         ClientConfig::new()
             .set("bootstrap.servers", &self.brokers_csv)
             .set("message.timeout.ms", "30000")
