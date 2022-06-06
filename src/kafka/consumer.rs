@@ -1,27 +1,105 @@
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::future::Future;
 
-use std::time::Duration;
-
 use anyhow::Result;
-use rdkafka::consumer::{
-    BaseConsumer, CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer,
-};
-use rdkafka::error::KafkaResult;
+use async_trait::async_trait;
+use prost::DecodeError;
+use rdkafka::config::FromClientConfig;
+use rdkafka::config::FromClientConfigAndContext;
+use rdkafka::consumer::{ConsumerContext, Rebalance};
+use rdkafka::error::{KafkaError, KafkaResult};
+use rdkafka::message::BorrowedMessage;
 use rdkafka::{ClientConfig, ClientContext, Message, TopicPartitionList};
+use thiserror::Error;
 use tracing::{debug, error, info};
 
-use super::KafkaMessage;
+use super::KafkaConfig;
 
-pub struct KafkaConsumer {
-    pub consumer: BaseConsumer<ConsumerCallbackLogger>,
+pub use rdkafka::consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer};
+
+impl KafkaConfig {
+    pub fn consumer_config<T>(&self, group_id: &str) -> T
+    where
+        T: FromClientConfig,
+    {
+        ClientConfig::new()
+            .set("group.id", group_id)
+            .set("bootstrap.servers", &self.brokers_csv)
+            .set("enable.partition.eof", "false")
+            .set(
+                "security.protocol",
+                self.security_protocol
+                    .clone()
+                    .unwrap_or_else(|| "ssl".to_string()),
+            )
+            .set("session.timeout.ms", "6000")
+            .set("enable.auto.commit", "false")
+            .set("auto.offset.reset", "earliest")
+            .create()
+            .expect("Consumer creation failed")
+    }
 }
 
-pub struct ConsumerCallbackLogger;
+#[async_trait]
+pub trait ConsumerExt<C = DefaultConsumerContext>: Consumer<C>
+where
+    C: ConsumerContext,
+{
+    async fn process_protobuf_and_commit<F, T, Fut, E>(
+        &self,
+        message: Result<BorrowedMessage<'_>, KafkaError>,
+        process_fn: F,
+        mode: CommitMode,
+    ) -> Result<(), Error>
+    where
+        T: prost::Message + Default,
+        F: Fn(T) -> Fut + Send + Sync,
+        Fut: Future<Output = Result<(), E>> + Send + Sync,
+        E: Display,
+    {
+        let message = message?;
 
-impl ClientContext for ConsumerCallbackLogger {}
+        let decoded_message = decode_protobuf::<T>(&message)?;
 
-impl ConsumerContext for ConsumerCallbackLogger {
+        process_fn(decoded_message)
+            .await
+            .map_err(|err| Error::ProcessError(err.to_string()))?;
+
+        self.commit_message(&message, mode)?;
+
+        Ok(())
+    }
+}
+
+impl<C: ConsumerContext, R> ConsumerExt<C> for StreamConsumer<C, R> {}
+
+fn decode_protobuf<T>(message: &BorrowedMessage<'_>) -> Result<T, Error>
+where
+    T: prost::Message + Default,
+{
+    let payload = message.payload().ok_or_else(|| Error::EmptyPayload)?;
+
+    Ok(T::decode(payload)?)
+}
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("kafka error: {0}")]
+    KafkaError(#[from] KafkaError),
+    #[error("decode error: {0}")]
+    DecodeError(#[from] DecodeError),
+    #[error("No messages available right now")]
+    EmptyPayload,
+    #[error("any error: {0}")]
+    ProcessError(String),
+}
+
+pub struct LoggingConsumerContext;
+
+impl ClientContext for LoggingConsumerContext {}
+
+impl ConsumerContext for LoggingConsumerContext {
     fn pre_rebalance(&self, rebalance: &Rebalance) {
         match rebalance {
             Rebalance::Assign(tpl) => {
@@ -55,120 +133,5 @@ impl ConsumerContext for ConsumerCallbackLogger {
             Ok(_) => debug!("committed: {:?}", offsets),
             Err(e) => info!("committed error: {:?}", e),
         }
-    }
-}
-
-impl KafkaConsumer {
-    pub fn new(kafka_brokers_str: String, topic: String, consumer_group: String) -> Self {
-        let consumer: BaseConsumer<ConsumerCallbackLogger> = ClientConfig::new()
-            .set("group.id", consumer_group)
-            .set("bootstrap.servers", kafka_brokers_str)
-            .set("enable.partition.eof", "false")
-            .set("security.protocol", "ssl")
-            .set("session.timeout.ms", "6000")
-            .set("enable.auto.commit", "false")
-            .set("auto.offset.reset", "earliest")
-            .create_with_context(ConsumerCallbackLogger {})
-            .expect("Consumer creation failed");
-
-        consumer
-            .subscribe(&[topic.as_str()])
-            .expect("Can't subscribe to specified topics");
-
-        Self { consumer }
-    }
-
-    pub async fn try_consume<F, Fut>(&self, process_message_callback: F) -> Result<()>
-    where
-        F: Fn(KafkaMessage) -> Fut,
-        Fut: Future<Output = Result<()>>,
-    {
-        loop {
-            let msg_opt = self.consumer.poll(Duration::from_millis(10000));
-
-            if msg_opt.is_none() {
-                info!("No messages available right now");
-                return Ok(());
-            }
-
-            let msg = msg_opt.unwrap();
-
-            if msg.is_err() {
-                info!("Error consume message: {:?}", msg.as_ref().err());
-                return Ok(());
-            }
-
-            if msg.as_ref().unwrap().payload().is_none() {
-                info!("No messages available right now.");
-                return Ok(());
-            }
-
-            let kafka_message = KafkaMessage {
-                value: (*(msg.as_ref().unwrap().payload().unwrap()).to_vec()).to_owned(),
-            };
-
-            process_message_callback(kafka_message).await?;
-
-            let commit_msg = self
-                .consumer
-                .commit_message(&msg.unwrap(), CommitMode::Sync);
-
-            match commit_msg {
-                Ok(_) => debug!("committed message"),
-                Err(e) => error!("error commit message: {:?}", e),
-            }
-        }
-    }
-}
-
-pub async fn consume<Fut, T>(
-    bootstrap_server: &str,
-    group_id: &str,
-    topics: &[&str],
-    handler: impl Fn(T) -> Fut,
-) where
-    T: prost::Message + Default + Debug,
-    Fut: Future<Output = Result<()>>,
-{
-    let consumer: StreamConsumer = ClientConfig::new()
-        .set("group.id", group_id)
-        .set("bootstrap.servers", bootstrap_server)
-        .set("enable.partition.eof", "false")
-        .set("auto.offset.reset", "latest")
-        .set("session.timeout.ms", "6000")
-        .set("heartbeat.interval.ms", "1000")
-        .set("enable.auto.commit", "true")
-        .set("security.protocol", "ssl")
-        .create()
-        .expect("Consumer creation failed");
-
-    consumer
-        .subscribe(topics)
-        .expect("Can't subscribe to specified topics");
-
-    loop {
-        match consumer.recv().await {
-            Err(error) => error!("Kafka error: {}", error),
-            Ok(message) => {
-                if message.payload().is_none() {
-                    info!("No messages available right now");
-                    continue;
-                }
-
-                if let Some(payload) = message.payload() {
-                    let parsed_result = T::decode(payload);
-
-                    match parsed_result {
-                        Ok(parsed_payload) => {
-                            match handler(parsed_payload).await {
-                                Ok(_) => (),
-                                Err(e) => error!("failed to handle message due to: {}", e),
-                            };
-                        }
-                        Err(e) => error!("Error while deserializing message payload: {}", e),
-                    }
-                }
-            }
-        };
     }
 }
