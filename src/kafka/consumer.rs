@@ -71,6 +71,27 @@ where
     }
 }
 
+pub async fn process_protobuf<F, T, Fut, E>(
+    message: Result<BorrowedMessage<'_>, KafkaError>,
+    process_fn: F,
+) -> Result<(), Error>
+where
+    T: prost::Message + Default,
+    F: Fn(T) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<(), E>> + Send,
+    E: Display,
+{
+    let message = message?;
+
+    let decoded_message = decode_protobuf::<T>(&message)?;
+
+    process_fn(decoded_message)
+        .await
+        .map_err(|err| Error::ProcessError(err.to_string()))?;
+
+    Ok(())
+}
+
 impl<C: ConsumerContext, R> ConsumerExt<C> for StreamConsumer<C, R> {}
 
 fn decode_protobuf<T>(message: &BorrowedMessage<'_>) -> Result<T, Error>
