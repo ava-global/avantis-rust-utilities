@@ -6,7 +6,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use prost::DecodeError;
 use rdkafka::config::FromClientConfig;
-use rdkafka::config::FromClientConfigAndContext;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
 use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::BorrowedMessage;
@@ -55,7 +54,7 @@ where
     where
         T: prost::Message + Default,
         F: Fn(T) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<(), E>> + Send + Sync,
+        Fut: Future<Output = Result<(), E>> + Send,
         E: Display,
     {
         let message = message?;
