@@ -11,6 +11,7 @@ use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::BorrowedMessage;
 use rdkafka::{ClientConfig, ClientContext, Message, TopicPartitionList};
 use thiserror::Error;
+use tracing::warn;
 use tracing::{debug, error, info};
 
 use super::KafkaConfig;
@@ -71,6 +72,8 @@ where
     }
 }
 
+impl<C: ConsumerContext, R> ConsumerExt<C> for StreamConsumer<C, R> {}
+
 pub async fn process_protobuf<F, T, Fut, E>(
     message: Result<BorrowedMessage<'_>, KafkaError>,
     process_fn: F,
@@ -92,7 +95,13 @@ where
     Ok(())
 }
 
-impl<C: ConsumerContext, R> ConsumerExt<C> for StreamConsumer<C, R> {}
+pub fn process_error(error: Error) {
+    warn!(
+        "consume and process kafka message fail with error `{}`",
+        error
+    );
+    ()
+}
 
 fn decode_protobuf<T>(message: &BorrowedMessage<'_>) -> Result<T, Error>
 where

@@ -1,5 +1,8 @@
 use rdkafka::config::FromClientConfig;
+use rdkafka::error::KafkaError;
+use rdkafka::message::OwnedMessage;
 use rdkafka::ClientConfig;
+use tracing::warn;
 
 use super::KafkaConfig;
 
@@ -25,4 +28,12 @@ impl KafkaConfig {
             .create()
             .expect("Producer creation error")
     }
+}
+
+pub fn process_error((error, message): (KafkaError, OwnedMessage)) -> (i32, i64) {
+    warn!(
+        "send kafka fail for message: `{:?}` with error `{}`",
+        message, error
+    );
+    (-1, -1)
 }
