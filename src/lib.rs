@@ -10,3 +10,5 @@ pub mod kafka;
 pub mod pagination;
 #[cfg(feature = "redis")]
 pub mod redis;
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
