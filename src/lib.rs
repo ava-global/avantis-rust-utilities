@@ -2,7 +2,7 @@
 
 #[cfg(feature = "config")]
 pub mod config;
-#[cfg(feature = "db_sqlx")]
+#[cfg(any(feature = "db-sqlx", feature = "db-diesel"))]
 pub mod db;
 #[cfg(feature = "kafka")]
 pub mod kafka;

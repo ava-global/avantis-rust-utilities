@@ -33,7 +33,12 @@ tracing = {version = "0.1.33", optional = true}
 prost = {version = "0.10.4", optional = true}
 bytes = "1.1.0"
 
-avantis-utils-derive = {path = "./avantis-utils-derive", version = "0.1.0", optional = true}
+diesel = { version = "2.0.0-rc.0", features = [
+  "postgres",
+  "r2d2",
+], optional = true }
+
+avantis-utils-derive = { path = "./avantis-utils-derive", version = "0.1.0", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0"
@@ -43,8 +48,8 @@ tokio = {version = "1.17.0", features = ["rt-multi-thread", "macros"]}
 
 [features]
 config = ["config_rs", "strum", "serde", "anyhow"]
-db_sqlx = ["sqlx", "serde"]
-default = ["config", "db_sqlx", "redis", "pagination", "kafka"]
+db-sqlx = ["sqlx", "serde"]
+default = ["config", "db-sqlx", "db-diesel", "redis", "pagination", "kafka"]
 kafka = [
   "anyhow",
   "thiserror",
@@ -55,6 +60,7 @@ kafka = [
   "tracing",
   "serde",
 ]
+db-diesel = ["diesel", "serde", "thiserror"]
 pagination = ["avantis-utils-derive"]
 redis = [
   "anyhow",

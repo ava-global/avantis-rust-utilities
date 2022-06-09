@@ -2,7 +2,7 @@ fn main() {
     inner::main();
 }
 
-#[cfg(all(feature = "config", feature = "db_sqlx", feature = "redis"))]
+#[cfg(all(feature = "config", feature = "db-sqlx", feature = "redis"))]
 mod inner {
     use avantis_utils::config::load_config;
     use avantis_utils::config::Environment;
@@ -63,9 +63,9 @@ mod inner {
     }
 }
 
-#[cfg(not(all(feature = "config", feature = "db_sqlx", feature = "redis")))]
+#[cfg(not(all(feature = "config", feature = "db-sqlx", feature = "redis")))]
 mod inner {
     pub fn main() {
-        println!("Please pass --features config,db_sqlx,redis to cargo when trying this example.");
+        println!("Please pass --features config,db-sqlx,redis to cargo when trying this example.");
     }
 }

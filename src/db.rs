@@ -6,10 +6,12 @@
 use std::time::Duration;
 
 use serde::Deserialize;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::Error;
-use sqlx::Pool;
-use sqlx::Postgres;
+
+#[cfg(feature = "db-sqlx")]
+pub mod sqlx;
+
+#[cfg(feature = "db-diesel")]
+pub mod diesel;
 
 /// Standard database config. Designed to be used in config module,
 /// one database per config.
@@ -39,22 +41,12 @@ pub struct DatabaseConfig {
 }
 
 impl DatabaseConfig {
-    pub async fn init_pool(&self) -> Result<Pool<Postgres>, Error> {
-        self.pool_options().connect(&self.postgres_uri()).await
-    }
-
     fn connection_timeout(&self) -> Duration {
         if cfg!(test) {
             Duration::from_nanos(1)
         } else {
             Duration::from_secs(30)
         }
-    }
-
-    fn pool_options(&self) -> PgPoolOptions {
-        PgPoolOptions::new()
-            .max_connections(self.max_connections)
-            .connect_timeout(self.connection_timeout())
     }
 
     fn postgres_uri(&self) -> String {
@@ -76,23 +68,6 @@ mod tests {
         assert_eq!(
             "postgres://username:supersecurepassword@localhost/my_db",
             CONFIG.postgres_uri(),
-        );
-    }
-
-    #[test]
-    fn test_pool_options() {
-        assert_eq!(
-            "\
-            PoolOptions { \
-                max_connections: 30, \
-                min_connections: 0, \
-                connect_timeout: 1ns, \
-                max_lifetime: Some(1800s), \
-                idle_timeout: Some(600s), \
-                test_before_acquire: true \
-            }\
-            ",
-            format!("{:?}", CONFIG.pool_options()),
         );
     }
 
