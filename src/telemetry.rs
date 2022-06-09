@@ -33,11 +33,11 @@ impl TelemetrySetting {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(self.log_level.clone()))
     }
 
-    fn bunyan_formatter<S>(&self) -> impl Layer<S>
+    fn bunyan_formatter<S>(&self, service_name: &'static str) -> impl Layer<S>
     where
         S: Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
     {
-        BunyanFormattingLayer::new(String::from(env!("CARGO_PKG_NAME")), std::io::stdout)
+        BunyanFormattingLayer::new(service_name.to_string(), std::io::stdout)
     }
 
     fn disable_targets_filter<S>(&self) -> impl Layer<S>
@@ -48,14 +48,14 @@ impl TelemetrySetting {
         FilterFn::new(move |metadata| !disabled_targets.contains(metadata.target()))
     }
 
-    fn tracer<S>(&self) -> impl Layer<S>
+    fn tracer<S>(&self, service_name: &'static str) -> impl Layer<S>
     where
         S: Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
     {
         let tracer = opentelemetry_otlp::new_pipeline()
             .tracing()
             .with_trace_config(trace::config().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", env!("CARGO_PKG_NAME")),
+                KeyValue::new("service.name", service_name),
                 KeyValue::new("host.name", gethostname().into_string().unwrap()),
             ])))
             .with_exporter(
@@ -69,19 +69,20 @@ impl TelemetrySetting {
         tracing_opentelemetry::layer().with_tracer(tracer)
     }
 
-    fn subscriber(&self) -> impl Subscriber {
+    fn subscriber(&self, service_name: &'static str) -> impl Subscriber {
         Registry::default()
             .with(self.log_level_filter())
             .with(self.disable_targets_filter())
             .with(JsonStorageLayer)
-            .with(self.bunyan_formatter())
-            .with(self.tracer())
+            .with(self.bunyan_formatter(service_name))
+            .with(self.tracer(service_name))
     }
 
-    pub fn init_telemetry(&self) -> Result<(), Error> {
+    pub fn init_telemetry(&self, service_name: &'static str) -> Result<(), Error> {
         LogTracer::init().map_err(|_| Error::TelemetryAlreadyInit)?;
         set_text_map_propagator(TraceContextPropagator::new());
-        set_global_default(self.subscriber()).map_err(|_| Error::TelemetryAlreadyInit)?;
+        set_global_default(self.subscriber(service_name))
+            .map_err(|_| Error::TelemetryAlreadyInit)?;
 
         info!(
             "Initializing telemetry with log level [{}]: Done",
