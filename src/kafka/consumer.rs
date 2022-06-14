@@ -19,7 +19,7 @@ use super::KafkaConfig;
 pub use rdkafka::consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer};
 
 impl KafkaConfig {
-    pub fn consumer_config<T>(&self, group_id: &str) -> T
+    pub fn consumer_config<T>(&self, group_id: &str) -> KafkaResult<T>
     where
         T: FromClientConfig,
     {
@@ -37,7 +37,6 @@ impl KafkaConfig {
             .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "earliest")
             .create()
-            .expect("Consumer creation failed")
     }
 }
 

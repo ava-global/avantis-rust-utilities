@@ -1,5 +1,5 @@
 use rdkafka::config::FromClientConfig;
-use rdkafka::error::KafkaError;
+use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::OwnedMessage;
 use rdkafka::ClientConfig;
 use tracing::warn;
@@ -10,7 +10,7 @@ pub use rdkafka::producer::{FutureProducer, FutureRecord};
 pub use rdkafka::util::Timeout;
 
 impl KafkaConfig {
-    pub fn producer_config<T>(&self) -> T
+    pub fn producer_config<T>(&self) -> KafkaResult<T>
     where
         T: FromClientConfig,
     {
@@ -26,7 +26,6 @@ impl KafkaConfig {
             .set_log_level(rdkafka::config::RDKafkaLogLevel::Debug)
             // .set("log.connection.close", "false")
             .create()
-            .expect("Producer creation error")
     }
 }
 
