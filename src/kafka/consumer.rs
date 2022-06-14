@@ -16,7 +16,7 @@ use tracing::{debug, error, info, warn};
 
 use super::KafkaConfig;
 
-pub use rdkafka::consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer};
+pub use rdkafka::consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer, MessageStream};
 
 impl KafkaConfig {
     #[instrument(skip_all, name = "kafka::init_consumer", fields(brokers = %self.brokers_csv, group = group_id))]
