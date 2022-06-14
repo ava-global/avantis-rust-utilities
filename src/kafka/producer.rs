@@ -2,6 +2,7 @@ use rdkafka::config::FromClientConfig;
 use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::OwnedMessage;
 use rdkafka::ClientConfig;
+use tracing::instrument;
 use tracing::warn;
 
 use super::KafkaConfig;
@@ -10,6 +11,7 @@ pub use rdkafka::producer::{FutureProducer, FutureRecord};
 pub use rdkafka::util::Timeout;
 
 impl KafkaConfig {
+    #[instrument(skip_all, name = "kafka::init_producer", fields(brokers = %self.brokers_csv))]
     pub fn producer_config<T>(&self) -> KafkaResult<T>
     where
         T: FromClientConfig,

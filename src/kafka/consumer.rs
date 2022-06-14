@@ -11,14 +11,15 @@ use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::BorrowedMessage;
 use rdkafka::{ClientConfig, ClientContext, Message, TopicPartitionList};
 use thiserror::Error;
-use tracing::warn;
-use tracing::{debug, error, info};
+use tracing::instrument;
+use tracing::{debug, error, info, warn};
 
 use super::KafkaConfig;
 
 pub use rdkafka::consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer};
 
 impl KafkaConfig {
+    #[instrument(skip_all, name = "kafka::init_consumer", fields(brokers = %self.brokers_csv, group = group_id))]
     pub fn consumer_config<T>(&self, group_id: &str) -> KafkaResult<T>
     where
         T: FromClientConfig,

@@ -5,6 +5,7 @@ use ::sqlx::Error;
 use ::sqlx::Pool;
 use ::sqlx::Postgres;
 use async_trait::async_trait;
+use tracing::instrument;
 
 #[async_trait]
 trait SqlxDatabaseConfig {
@@ -13,6 +14,7 @@ trait SqlxDatabaseConfig {
 
 #[async_trait]
 impl SqlxDatabaseConfig for DatabaseConfig {
+    #[instrument(skip_all, name = "db::sqlx::init_pool", fields(host = %self.host, db = %self.db_name))]
     async fn init_pool(&self) -> Result<Pool<Postgres>, Error> {
         self.pool_options().connect(&self.postgres_uri()).await
     }

@@ -3,7 +3,8 @@ use super::*;
 use ::diesel::pg::PgConnection;
 use ::diesel::r2d2::{ConnectionManager, Pool, PoolError, PooledConnection};
 use ::diesel::{Connection, ConnectionError};
-use ::thiserror::Error;
+use thiserror::Error;
+use tracing::instrument;
 
 pub type PgPool = Pool<ConnectionManager<PgConnection>>;
 pub type PgPooledConnection = PooledConnection<ConnectionManager<PgConnection>>;
@@ -13,15 +14,18 @@ pub trait DieselDatabaseConfig {
 }
 
 impl DieselDatabaseConfig for DatabaseConfig {
+    #[instrument(skip_all, name = "db::diesel::init_pool", fields(host = %self.host, db = %self.db_name))]
     fn init_pool(&self) -> Result<PgPool, Error> {
         let database_url = self.postgres_uri();
         PgConnection::establish(&database_url)?;
 
         let manager = ConnectionManager::<PgConnection>::new(database_url);
-        Ok(Pool::builder()
+        let pool = Pool::builder()
             .max_size(self.max_connections)
             .connection_timeout(self.connection_timeout())
-            .build(manager)?)
+            .build(manager)?;
+
+        Ok(pool)
     }
 }
 

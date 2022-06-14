@@ -85,7 +85,7 @@ impl TelemetrySetting {
             .map_err(|_| Error::TelemetryAlreadyInit)?;
 
         info!(
-            "Initializing telemetry with log level [{}]: Done",
+            "initializing telemetry with log level [{}]: Done",
             self.log_level
         );
 
