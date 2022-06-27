@@ -9,6 +9,8 @@ async fn main() -> Result<()> {
 
 #[cfg(all(feature = "config", feature = "kafka"))]
 mod inner {
+    use std::collections::HashMap;
+
     use super::*;
 
     use avantis_utils::config::load_config;
@@ -18,7 +20,10 @@ mod inner {
     use avantis_utils::kafka::KafkaConfig;
     use avantis_utils::kafka::ProtobufKafkaMessage;
     use avantis_utils::kafka::ProtobufKafkaRecord;
+    use avantis_utils::telemetry::TelemetrySetting;
     use once_cell::sync::Lazy;
+    use opentelemetry::propagation::TextMapPropagator;
+    use opentelemetry::sdk::propagation::TraceContextPropagator;
     use rdkafka::consumer::CommitMode;
     use rdkafka::consumer::StreamConsumer;
     use rdkafka::message::OwnedHeaders;
@@ -29,8 +34,9 @@ mod inner {
     use rdkafka::consumer::Consumer;
     use prost::Message;
     use prost;
-
-
+    use tracing;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+    use tracing::info;
     #[derive(Clone, PartialEq, Message)]
     pub struct ProtobufMessage {
         #[prost(string, tag="1")]
@@ -50,18 +56,34 @@ mod inner {
         Lazy::new(|| ExampleSettings::load(Environment::Develop).unwrap());
 
     pub async fn main() -> Result<()> {
+        SETTINGS.telemetry.init_telemetry(env!("CARGO_PKG_NAME"))?;
         producer().await?;
         consumer().await?;
 
         Ok(())
     }
 
+    #[tracing::instrument(name = "kafk_simple::check_msg")]
     async fn check_msg(msg: ProtobufMessage) -> Result<()>{
         println!("Checking messages {}", msg.message);
         Ok(())
     }
 
+    #[tracing::instrument(name = "kafk_simple::consumer")]
     async fn consumer() -> Result<(), anyhow::Error> {
+        // Example carrier, could be a framework header map that impls otel's `Extractor`.
+        let mut carrier = HashMap::new();
+        carrier.insert("traceId".to_string(), "value".to_string());
+        // Propagator can be swapped with b3 propagator, jaeger propagator, etc.
+        let propagator = TraceContextPropagator::new();
+
+        // Extract otel parent context via the chosen propagator
+        let parent_context = propagator.extract(&carrier);
+
+        tracing::Span::current().set_parent(parent_context.clone());
+
+        info!("info");
+
         let kafka_consumer: StreamConsumer = SETTINGS
             .kafka_config
             .consumer_config(&SETTINGS.kafka_consumer_group)?;
@@ -106,6 +128,7 @@ mod inner {
 
     #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
     struct ExampleSettings {
+        pub telemetry: TelemetrySetting,
         kafka_config: KafkaConfig,
         kafka_topic: String,
         kafka_consumer_group: String,
