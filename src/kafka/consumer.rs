@@ -13,6 +13,7 @@ use rdkafka::{ClientConfig, ClientContext, Message, TopicPartitionList};
 use thiserror::Error;
 use tracing::instrument;
 use tracing::{debug, error, info, warn};
+use rdkafka::message::Headers;
 
 use super::KafkaConfig;
 
@@ -59,6 +60,8 @@ where
         E: Display,
     {
         let message = message?;
+        println!("message hearder key {:?}", message.headers().unwrap().get(0).unwrap().0);
+        println!("message hearder value {:?}", std::str::from_utf8(message.headers().unwrap().get(0).unwrap().1).unwrap());
 
         let decoded_message = decode_protobuf::<T>(&message)?;
 
