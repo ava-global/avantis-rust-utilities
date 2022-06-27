@@ -75,11 +75,9 @@ mod inner {
                     check_msg,
                     CommitMode::Sync,
                 );
-                // println!("process result {:?}", result.await.unwrap());
                 result
             })
             .map(|future_result| async move {
-                // println!("process result {:?}", future_result.await.unwrap_or());
                 future_result.await.unwrap_or_else(consumer::process_error)
             });
         pin!(stream);

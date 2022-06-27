@@ -15,3 +15,5 @@ kafka:
   flush_duration_millis : 10000
   poll_duration_millis: 1
   security_protocol: "ssl"
+kafka_topic: "kafka.topic"
+kafka_consumer_group: "kafka_consumer_group.consumer_group"
