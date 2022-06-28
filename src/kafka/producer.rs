@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use anyhow::Error;
 use anyhow::anyhow;
-use opentelemetry::trace::TraceContextExt;
+use opentelemetry::global;
 use rdkafka::config::FromClientConfig;
 use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::{OwnedMessage, OwnedHeaders};
@@ -48,13 +50,16 @@ impl KafkaAgent {
 
     #[instrument(skip_all, name = "kafka::send")]
     pub async fn send(&self, record: FutureRecord<'_, String, [u8]>) -> Result<(i32, i64), Error>{
-        let trace_id = tracing::Span::current()
-            .context()
-            .span()
-            .span_context()
-            .trace_id();
+        let cx = tracing::Span::current().context();
+        let mut trace_metadata = HashMap::new();
+        global::get_text_map_propagator(|propagator| {
+            propagator.inject_context(&cx, &mut trace_metadata)
+        });
+
         let record = record
-            .headers(OwnedHeaders::new().add("trace_id", &trace_id.to_string()));
+            .headers(OwnedHeaders::new()
+                .add("traceparent", &trace_metadata.get("traceparent").ok_or_else(|| anyhow!("trace metadata don't have traceparent"))?)
+                .add("tracestate", &trace_metadata.get("tracestate").ok_or_else(|| anyhow!("trace metadata don't have tracestate"))?));
 
         Ok(self.kafka_future_producer.as_ref().ok_or(anyhow!("Cannot start future producer"))?
             .send(record, Timeout::Never)
