@@ -4,20 +4,29 @@ use std::future::Future;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use opentelemetry::trace::SpanContext;
+use opentelemetry::trace::SpanId;
+use opentelemetry::trace::TraceContextExt;
+use opentelemetry::trace::TraceId;
+use opentelemetry::Context;
 use prost::DecodeError;
 use rdkafka::config::FromClientConfig;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
 use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::BorrowedMessage;
+use rdkafka::message::Headers;
 use rdkafka::{ClientConfig, ClientContext, Message, TopicPartitionList};
 use thiserror::Error;
 use tracing::instrument;
 use tracing::{debug, error, info, warn};
-use rdkafka::message::Headers;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+use rand::Rng;
 
 use super::KafkaConfig;
 
-pub use rdkafka::consumer::{CommitMode, Consumer, DefaultConsumerContext, StreamConsumer, MessageStream};
+pub use rdkafka::consumer::{
+    CommitMode, Consumer, DefaultConsumerContext, MessageStream, StreamConsumer,
+};
 
 impl KafkaConfig {
     #[instrument(skip_all, name = "kafka::init_consumer", fields(brokers = %self.brokers_csv, group = group_id))]
@@ -42,6 +51,40 @@ impl KafkaConfig {
     }
 }
 
+pub fn log_tid() {
+    println!(
+        "current_context: {:?}",
+        tracing::Span::current()
+            .context()
+            .span()
+            .span_context()
+            .trace_id()
+    );
+}
+
+pub fn set_trace_id(hex_trace: &String) {
+    log_tid();
+
+    let span_ctx = tracing::Span::current()
+        .context()
+        .span()
+        .span_context()
+        .clone();
+    let mut rng = rand::thread_rng();
+    let update_trace_span_ctx = SpanContext::new(
+        TraceId::from_hex(&hex_trace).unwrap(),
+        // span_ctx.span_id(),
+        SpanId::from_bytes(rng.gen::<[u8; 8]>()),
+        span_ctx.trace_flags(),
+        span_ctx.is_remote(),
+        span_ctx.trace_state().to_owned(),
+    );
+    let ctx_update = Context::current().with_remote_span_context(update_trace_span_ctx);
+
+    tracing::Span::current().set_parent(ctx_update);
+    log_tid();
+}
+
 #[async_trait]
 pub trait ConsumerExt<C = DefaultConsumerContext>: Consumer<C>
 where
@@ -60,8 +103,14 @@ where
         E: Display,
     {
         let message = message?;
-        println!("message hearder key {:?}", message.headers().unwrap().get(0).unwrap().0);
-        println!("message hearder value {:?}", std::str::from_utf8(message.headers().unwrap().get(0).unwrap().1).unwrap());
+        println!(
+            "message hearder key {:?}",
+            message.headers().unwrap().get(0).unwrap().0
+        );
+        let value = std::str::from_utf8(message.headers().unwrap().get(0).unwrap().1).unwrap();
+        println!("message hearder value {:?}", value);
+
+        set_trace_id(&value.to_owned());
 
         let decoded_message = decode_protobuf::<T>(&message)?;
 

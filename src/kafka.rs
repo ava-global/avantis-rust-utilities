@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use rdkafka::producer::FutureRecord;
+use rdkafka::producer::{FutureRecord};
 use serde::Deserialize;
 use std::ops::Deref;
 

@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use anyhow::Result;
 use tokio;
 
@@ -9,7 +8,6 @@ async fn main() -> Result<()> {
 
 #[cfg(all(feature = "config", feature = "kafka"))]
 mod inner {
-    use std::collections::HashMap;
 
     use super::*;
 
@@ -20,26 +18,24 @@ mod inner {
     use avantis_utils::kafka::KafkaConfig;
     use avantis_utils::kafka::ProtobufKafkaMessage;
     use avantis_utils::kafka::ProtobufKafkaRecord;
+    use avantis_utils::kafka::consumer::log_tid;
+    use avantis_utils::kafka::producer::KafkaAgent;
     use avantis_utils::telemetry::TelemetrySetting;
-    use once_cell::sync::Lazy;
-    use opentelemetry::propagation::TextMapPropagator;
-    use opentelemetry::sdk::propagation::TraceContextPropagator;
-    use rdkafka::consumer::CommitMode;
-    use rdkafka::consumer::StreamConsumer;
-    use rdkafka::message::OwnedHeaders;
-    use rdkafka::producer::FutureProducer;
-    use rdkafka::producer::FutureRecord;
-    use rdkafka::util::Timeout;
     use futures_lite::{pin, StreamExt};
-    use rdkafka::consumer::Consumer;
-    use prost::Message;
+    use once_cell::sync::Lazy;
+    use opentelemetry::trace::TraceContextExt;
     use prost;
+    use prost::Message;
+    use rdkafka::consumer::CommitMode;
+    use rdkafka::consumer::Consumer;
+    use rdkafka::consumer::StreamConsumer;
+    use rdkafka::producer::FutureRecord;
     use tracing;
     use tracing_opentelemetry::OpenTelemetrySpanExt;
-    use tracing::info;
+
     #[derive(Clone, PartialEq, Message)]
     pub struct ProtobufMessage {
-        #[prost(string, tag="1")]
+        #[prost(string, tag = "1")]
         pub message: prost::alloc::string::String,
     }
 
@@ -55,8 +51,11 @@ mod inner {
     static SETTINGS: Lazy<ExampleSettings> =
         Lazy::new(|| ExampleSettings::load(Environment::Develop).unwrap());
 
+    #[tracing::instrument(name = "kafk_simple::main")]
     pub async fn main() -> Result<()> {
         SETTINGS.telemetry.init_telemetry(env!("CARGO_PKG_NAME"))?;
+        producer().await?;
+        producer().await?;
         producer().await?;
         consumer().await?;
 
@@ -64,26 +63,23 @@ mod inner {
     }
 
     #[tracing::instrument(name = "kafk_simple::check_msg")]
-    async fn check_msg(msg: ProtobufMessage) -> Result<()>{
+    async fn check_msg(msg: ProtobufMessage) -> Result<()> {
         println!("Checking messages {}", msg.message);
+        check_msg2();
         Ok(())
     }
 
+    #[tracing::instrument(name = "kafk_simple::2check_msg2")]
+    fn check_msg2() {
+        println!("Checking messages 2");
+        // Ok(())
+    }
+
+
     #[tracing::instrument(name = "kafk_simple::consumer")]
     async fn consumer() -> Result<(), anyhow::Error> {
-        // Example carrier, could be a framework header map that impls otel's `Extractor`.
-        let mut carrier = HashMap::new();
-        carrier.insert("traceId".to_string(), "value".to_string());
-        // Propagator can be swapped with b3 propagator, jaeger propagator, etc.
-        let propagator = TraceContextPropagator::new();
-
-        // Extract otel parent context via the chosen propagator
-        let parent_context = propagator.extract(&carrier);
-
-        tracing::Span::current().set_parent(parent_context.clone());
-
-        info!("info");
-
+        // kafka_consumer.set_trace_id(&"00000aaaaaaaaaaa".to_string());
+        log_tid();
         let kafka_consumer: StreamConsumer = SETTINGS
             .kafka_config
             .consumer_config(&SETTINGS.kafka_consumer_group)?;
@@ -108,20 +104,32 @@ mod inner {
         })
     }
 
+    #[tracing::instrument(name = "kafk_simple::producer")]
     async fn producer() -> Result<(), anyhow::Error> {
+        let trace_id = tracing::Span::current()
+            .context()
+            .span()
+            .span_context()
+            .trace_id();
+        println!("producer trace id : {}", trace_id);
         let record = ProtobufKafkaRecord {
             topic: &SETTINGS.kafka_topic,
-            message: ProtobufMessage{ message: "test message".to_string()}.into()
+            message: ProtobufMessage {
+                message: "test message".to_string(),
+            }
+            .into(),
         };
-        let record: FutureRecord<String, [u8]> = FutureRecord::from(&record)
-            .headers(OwnedHeaders::new().add("header_key_in_rust_util", "header_value"));
+        let record: FutureRecord<String, [u8]> = FutureRecord::from(&record);
+            // .headers(OwnedHeaders::new().add("trace_id", &trace_id.to_string()));
 
-        let producer: FutureProducer = SETTINGS.kafka_config.producer_config()?;
+        // let producer: FutureProducer = SETTINGS.kafka_config.producer_config()?;
 
-        let result = producer
-            .send(record, Timeout::Never)
-            .await
-            .map_err(|e| anyhow!("Error occur while produce kafka message cause: {:?}", e))?;
+        // let result = producer
+        //     .send(record, Timeout::Never)
+        //     .await
+        //     .map_err(|e| anyhow!("Error occur while produce kafka message cause: {:?}", e))?;
+        let result = KafkaAgent::new(SETTINGS.kafka_config.clone())
+            .send(record).await?;
         println!("result {:?}", result);
         Ok(())
     }
