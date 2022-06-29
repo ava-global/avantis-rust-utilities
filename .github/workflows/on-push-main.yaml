@@ -26,8 +26,8 @@ jobs:
       - name: Install llvm-tools
         run: rustup component add llvm-tools-preview
           
-      - name: Run test with code coverage
-        run: cargo test
+      - name: Run test with code coverage, only lib
+        run: cargo test --lib
         env:
           RUSTFLAGS: '-C instrument-coverage'
           LLVM_PROFILE_FILE: test-%p-%m.profraw
