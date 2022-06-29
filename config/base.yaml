@@ -1,1 +1,5 @@
 log_level: info
+telemetry:
+  log_level: info
+  otel_collector_endpoint: http://localhost:4317
+  disabled_targets: []
