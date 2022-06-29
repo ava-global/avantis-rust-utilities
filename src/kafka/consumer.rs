@@ -48,6 +48,35 @@ impl KafkaConfig {
     }
 }
 
+pub fn set_trace(message: &BorrowedMessage) -> Result<(), KakfaProcessError> {
+    if let Some(header) = message.headers() {
+        let traceparent = std::str::from_utf8(
+            header
+                .get(0)
+                .ok_or_else(|| {
+                    KakfaProcessError::ParseHeaderError("header 0 not found".to_string())
+                })?
+                .1,
+        )?;
+        let tracestate = std::str::from_utf8(
+            header
+                .get(1)
+                .ok_or_else(|| {
+                    KakfaProcessError::ParseHeaderError("header 1 not found".to_string())
+                })?
+                .1,
+        )?;
+
+        let mut trace_metadata = HashMap::<String, String>::new();
+        trace_metadata.insert("traceparent".to_string(), traceparent.to_owned());
+        trace_metadata.insert("tracestate".to_string(), tracestate.to_owned());
+
+        let parent_cx = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
+        tracing::Span::current().set_parent(parent_cx);
+    }
+    Ok(())
+}
+
 #[async_trait]
 pub trait ConsumerExt<C = DefaultConsumerContext>: Consumer<C>
 where
@@ -66,31 +95,7 @@ where
         E: Display,
     {
         let message = message?;
-        if let Some(header) = message.headers() {
-            let traceparent = std::str::from_utf8(
-                header
-                    .get(0)
-                    .ok_or_else(|| {
-                        KakfaProcessError::ParseHeaderError("header 0 not found".to_string())
-                    })?
-                    .1,
-            )?;
-            let tracestate = std::str::from_utf8(
-                header
-                    .get(1)
-                    .ok_or_else(|| {
-                        KakfaProcessError::ParseHeaderError("header 1 not found".to_string())
-                    })?
-                    .1,
-            )?;
-
-            let mut trace_metadata = HashMap::<String, String>::new();
-            trace_metadata.insert("traceparent".to_string(), traceparent.to_owned());
-            trace_metadata.insert("tracestate".to_string(), tracestate.to_owned());
-
-            let parent_cx = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
-            tracing::Span::current().set_parent(parent_cx);
-        }
+        set_trace(&message)?;
 
         let decoded_message = decode_protobuf::<T>(&message)?;
 

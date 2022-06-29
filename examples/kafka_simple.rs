@@ -15,7 +15,7 @@ mod inner {
     use avantis_utils::config::Environment;
     use avantis_utils::kafka::consumer;
     use avantis_utils::kafka::consumer::ConsumerExt;
-    use avantis_utils::kafka::KafkaAgent;
+    use avantis_utils::kafka::producer;
     use avantis_utils::kafka::KafkaConfig;
     use avantis_utils::kafka::ProtobufKafkaMessage;
     use avantis_utils::kafka::ProtobufKafkaRecord;
@@ -28,6 +28,7 @@ mod inner {
     use rdkafka::consumer::CommitMode;
     use rdkafka::consumer::Consumer;
     use rdkafka::consumer::StreamConsumer;
+    use rdkafka::producer::FutureProducer;
     use rdkafka::producer::FutureRecord;
     use tracing;
     use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -53,7 +54,7 @@ mod inner {
     #[tracing::instrument(name = "kafk_simple::main")]
     pub async fn main() -> Result<()> {
         SETTINGS.telemetry.init_telemetry(env!("CARGO_PKG_NAME"))?;
-        let kafka_agent = KafkaAgent::new(SETTINGS.kafka.clone()).with_future_producer();
+        let kafka_agent: FutureProducer = SETTINGS.kafka.producer_config()?;
         producer(&kafka_agent).await?;
         producer(&kafka_agent).await?;
         producer(&kafka_agent).await?;
@@ -101,7 +102,7 @@ mod inner {
     }
 
     #[tracing::instrument(skip_all, name = "kafk_simple::producer")]
-    async fn producer(kafka_agent: &KafkaAgent) -> Result<(), anyhow::Error> {
+    async fn producer(future_producer: &FutureProducer) -> Result<(), anyhow::Error> {
         let trace_id = tracing::Span::current()
             .context()
             .span()
@@ -116,7 +117,7 @@ mod inner {
             .into(),
         };
         let record: FutureRecord<String, [u8]> = FutureRecord::from(&record);
-        let result = kafka_agent.send(record).await?;
+        let result = producer::send(future_producer, record).await?;
         println!("result {:?}", result);
         Ok(())
     }
