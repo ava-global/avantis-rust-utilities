@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use anyhow::Result;
 use tokio;
 
@@ -15,7 +16,7 @@ mod inner {
     use avantis_utils::config::Environment;
     use avantis_utils::kafka::consumer;
     use avantis_utils::kafka::consumer::ConsumerExt;
-    use avantis_utils::kafka::producer;
+    use avantis_utils::kafka::producer::with_trace_header;
     use avantis_utils::kafka::KafkaConfig;
     use avantis_utils::kafka::ProtobufKafkaMessage;
     use avantis_utils::kafka::ProtobufKafkaRecord;
@@ -30,6 +31,7 @@ mod inner {
     use rdkafka::consumer::StreamConsumer;
     use rdkafka::producer::FutureProducer;
     use rdkafka::producer::FutureRecord;
+    use rdkafka::util::Timeout;
     use tracing;
     use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -117,7 +119,10 @@ mod inner {
             .into(),
         };
         let record: FutureRecord<String, [u8]> = FutureRecord::from(&record);
-        let result = producer::send(future_producer, record).await?;
+        let result = future_producer
+            .send(with_trace_header(record)?, Timeout::Never)
+            .await
+            .map_err(|e| anyhow!("Error occur while produce kafka message cause: {:?}", e));
         println!("result {:?}", result);
         Ok(())
     }

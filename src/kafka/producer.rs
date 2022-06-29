@@ -63,17 +63,6 @@ impl KafkaConfig {
     }
 }
 
-#[instrument(skip_all, name = "kafka::send")]
-pub async fn send(
-    future_producer: &FutureProducer,
-    record: FutureRecord<'_, String, [u8]>,
-) -> Result<(i32, i64), Error> {
-    future_producer
-        .send(with_trace_header(record)?, Timeout::Never)
-        .await
-        .map_err(|e| anyhow!("Error occur while produce kafka message cause: {:?}", e))
-}
-
 pub fn process_error((error, message): (KafkaError, OwnedMessage)) -> (i32, i64) {
     warn!(
         "send kafka fail for message: `{:?}` with error `{}`",
