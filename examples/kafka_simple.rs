@@ -15,7 +15,7 @@ mod inner {
     use avantis_utils::config::Environment;
     use avantis_utils::kafka::consumer;
     use avantis_utils::kafka::consumer::ConsumerExt;
-    use avantis_utils::kafka::producer::KafkaAgent;
+    use avantis_utils::kafka::KafkaAgent;
     use avantis_utils::kafka::KafkaConfig;
     use avantis_utils::kafka::ProtobufKafkaMessage;
     use avantis_utils::kafka::ProtobufKafkaRecord;
@@ -53,7 +53,7 @@ mod inner {
     #[tracing::instrument(name = "kafk_simple::main")]
     pub async fn main() -> Result<()> {
         SETTINGS.telemetry.init_telemetry(env!("CARGO_PKG_NAME"))?;
-        let kafka_agent = KafkaAgent::new(SETTINGS.kafka_config.clone());
+        let kafka_agent = KafkaAgent::new(SETTINGS.kafka.clone()).with_future_producer();
         producer(&kafka_agent).await?;
         producer(&kafka_agent).await?;
         producer(&kafka_agent).await?;
@@ -74,10 +74,10 @@ mod inner {
         println!("Checking messages 2");
     }
 
-    #[tracing::instrument(name = "kafk_simple::consumer")]
+    #[tracing::instrument(skip_all, name = "kafk_simple::consumer")]
     async fn consumer() -> Result<(), anyhow::Error> {
         let kafka_consumer: StreamConsumer = SETTINGS
-            .kafka_config
+            .kafka
             .consumer_config(&SETTINGS.kafka_consumer_group)?;
 
         kafka_consumer.subscribe(&[&SETTINGS.kafka_topic])?;
@@ -124,7 +124,7 @@ mod inner {
     #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
     struct ExampleSettings {
         pub telemetry: TelemetrySetting,
-        kafka_config: KafkaConfig,
+        kafka: KafkaConfig,
         kafka_topic: String,
         kafka_consumer_group: String,
     }
