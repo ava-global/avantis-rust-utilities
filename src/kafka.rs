@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use rdkafka::producer::{FutureRecord};
+use rdkafka::producer::FutureRecord;
 use serde::Deserialize;
 use std::ops::Deref;
 
@@ -28,6 +28,6 @@ impl<'a> From<&'a ProtobufKafkaRecord<'a>> for FutureRecord<'a, String, [u8]> {
     fn from(record: &'a ProtobufKafkaRecord<'a>) -> FutureRecord<'a, String, [u8]> {
         FutureRecord::to(record.topic)
             .key(&record.message.key)
-            .payload(&record.message.value.deref())
+            .payload(record.message.value.deref())
     }
 }

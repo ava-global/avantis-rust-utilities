@@ -6,13 +6,8 @@ use std::future::Future;
 use anyhow::Result;
 use async_trait::async_trait;
 use opentelemetry::global;
-use opentelemetry::trace::SpanContext;
-use opentelemetry::trace::SpanId;
 use opentelemetry::trace::TraceContextExt;
-use opentelemetry::trace::TraceId;
-use opentelemetry::Context;
 use prost::DecodeError;
-use rand::Rng;
 use rdkafka::config::FromClientConfig;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
 use rdkafka::error::{KafkaError, KafkaResult};
@@ -64,29 +59,6 @@ pub fn log_tid() {
     );
 }
 
-pub fn set_trace_id(hex_trace: &String) {
-    log_tid();
-
-    let span_ctx = tracing::Span::current()
-        .context()
-        .span()
-        .span_context()
-        .clone();
-    let mut rng = rand::thread_rng();
-    let update_trace_span_ctx = SpanContext::new(
-        TraceId::from_hex(&hex_trace).unwrap(),
-        // span_ctx.span_id(),
-        SpanId::from_bytes(rng.gen::<[u8; 8]>()),
-        span_ctx.trace_flags(),
-        span_ctx.is_remote(),
-        span_ctx.trace_state().to_owned(),
-    );
-    let ctx_update = Context::current().with_remote_span_context(update_trace_span_ctx);
-
-    tracing::Span::current().set_parent(ctx_update);
-    log_tid();
-}
-
 #[async_trait]
 pub trait ConsumerExt<C = DefaultConsumerContext>: Consumer<C>
 where
@@ -106,7 +78,6 @@ where
     {
         let message = message?;
         let header = message.headers().unwrap();
-        // let trace_metadata: Hast = header
         println!("message header key {:?}", header.get(0).unwrap().0);
         let traceparent = std::str::from_utf8(header.get(0).unwrap().1).unwrap();
         let tracestate = std::str::from_utf8(header.get(1).unwrap().1).unwrap();
@@ -115,16 +86,12 @@ where
         trace_metadata.insert("traceparent".to_string(), traceparent.to_owned());
         trace_metadata.insert("tracestate".to_string(), tracestate.to_owned());
 
-        let parent_cx = global::get_text_map_propagator(|prop| {
-            prop.extract(&trace_metadata)
-        });
+        let parent_cx = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
         tracing::Span::current().set_parent(parent_cx);
-        
+
         log_tid();
 
         println!("message header value {:?}", traceparent);
-
-        // set_trace_id(&traceparent.to_owned());
 
         let decoded_message = decode_protobuf::<T>(&message)?;
 
@@ -166,9 +133,9 @@ pub fn process_error(error: Error) {
         "consume and process kafka message fail with error `{}`",
         error
     );
-    ()
 }
 
+#[allow(clippy::unnecessary_lazy_evaluations)]
 fn decode_protobuf<T>(message: &BorrowedMessage<'_>) -> Result<T, Error>
 where
     T: prost::Message + Default,

@@ -14,12 +14,12 @@ mod inner {
     use avantis_utils::config::load_config;
     use avantis_utils::config::Environment;
     use avantis_utils::kafka::consumer;
+    use avantis_utils::kafka::consumer::log_tid;
     use avantis_utils::kafka::consumer::ConsumerExt;
+    use avantis_utils::kafka::producer::KafkaAgent;
     use avantis_utils::kafka::KafkaConfig;
     use avantis_utils::kafka::ProtobufKafkaMessage;
     use avantis_utils::kafka::ProtobufKafkaRecord;
-    use avantis_utils::kafka::consumer::log_tid;
-    use avantis_utils::kafka::producer::KafkaAgent;
     use avantis_utils::telemetry::TelemetrySetting;
     use futures_lite::{pin, StreamExt};
     use once_cell::sync::Lazy;
@@ -75,7 +75,6 @@ mod inner {
         // Ok(())
     }
 
-
     #[tracing::instrument(name = "kafk_simple::consumer")]
     async fn consumer() -> Result<(), anyhow::Error> {
         // kafka_consumer.set_trace_id(&"00000aaaaaaaaaaa".to_string());
@@ -120,7 +119,7 @@ mod inner {
             .into(),
         };
         let record: FutureRecord<String, [u8]> = FutureRecord::from(&record);
-            // .headers(OwnedHeaders::new().add("trace_id", &trace_id.to_string()));
+        // .headers(OwnedHeaders::new().add("trace_id", &trace_id.to_string()));
 
         // let producer: FutureProducer = SETTINGS.kafka_config.producer_config()?;
 
@@ -129,7 +128,8 @@ mod inner {
         //     .await
         //     .map_err(|e| anyhow!("Error occur while produce kafka message cause: {:?}", e))?;
         let result = KafkaAgent::new(SETTINGS.kafka_config.clone())
-            .send(record).await?;
+            .send(record)
+            .await?;
         println!("result {:?}", result);
         Ok(())
     }
