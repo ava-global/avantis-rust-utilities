@@ -14,7 +14,6 @@ mod inner {
     use avantis_utils::config::load_config;
     use avantis_utils::config::Environment;
     use avantis_utils::kafka::consumer;
-    use avantis_utils::kafka::consumer::log_tid;
     use avantis_utils::kafka::consumer::ConsumerExt;
     use avantis_utils::kafka::producer::KafkaAgent;
     use avantis_utils::kafka::KafkaConfig;
@@ -54,31 +53,29 @@ mod inner {
     #[tracing::instrument(name = "kafk_simple::main")]
     pub async fn main() -> Result<()> {
         SETTINGS.telemetry.init_telemetry(env!("CARGO_PKG_NAME"))?;
-        producer().await?;
-        producer().await?;
-        producer().await?;
+        let kafka_agent = KafkaAgent::new(SETTINGS.kafka_config.clone());
+        producer(&kafka_agent).await?;
+        producer(&kafka_agent).await?;
+        producer(&kafka_agent).await?;
         consumer().await?;
 
         Ok(())
     }
 
-    #[tracing::instrument(name = "kafk_simple::check_msg")]
+    #[tracing::instrument(name = "kafk_simple::check_msg", fields(span.kind = "consumer"))]
     async fn check_msg(msg: ProtobufMessage) -> Result<()> {
         println!("Checking messages {}", msg.message);
-        check_msg2();
+        check_msg_inner();
         Ok(())
     }
 
-    #[tracing::instrument(name = "kafk_simple::2check_msg2")]
-    fn check_msg2() {
+    #[tracing::instrument(name = "kafk_simple::check_msg2")]
+    fn check_msg_inner() {
         println!("Checking messages 2");
-        // Ok(())
     }
 
     #[tracing::instrument(name = "kafk_simple::consumer")]
     async fn consumer() -> Result<(), anyhow::Error> {
-        // kafka_consumer.set_trace_id(&"00000aaaaaaaaaaa".to_string());
-        log_tid();
         let kafka_consumer: StreamConsumer = SETTINGS
             .kafka_config
             .consumer_config(&SETTINGS.kafka_consumer_group)?;
@@ -103,8 +100,8 @@ mod inner {
         })
     }
 
-    #[tracing::instrument(name = "kafk_simple::producer")]
-    async fn producer() -> Result<(), anyhow::Error> {
+    #[tracing::instrument(skip_all, name = "kafk_simple::producer")]
+    async fn producer(kafka_agent: &KafkaAgent) -> Result<(), anyhow::Error> {
         let trace_id = tracing::Span::current()
             .context()
             .span()
@@ -119,17 +116,7 @@ mod inner {
             .into(),
         };
         let record: FutureRecord<String, [u8]> = FutureRecord::from(&record);
-        // .headers(OwnedHeaders::new().add("trace_id", &trace_id.to_string()));
-
-        // let producer: FutureProducer = SETTINGS.kafka_config.producer_config()?;
-
-        // let result = producer
-        //     .send(record, Timeout::Never)
-        //     .await
-        //     .map_err(|e| anyhow!("Error occur while produce kafka message cause: {:?}", e))?;
-        let result = KafkaAgent::new(SETTINGS.kafka_config.clone())
-            .send(record)
-            .await?;
+        let result = kafka_agent.send(record).await?;
         println!("result {:?}", result);
         Ok(())
     }
@@ -153,9 +140,7 @@ mod inner {
 mod inner {
     use super::*;
 
-    pub fn main() -> () {
+    pub fn main() {
         println!("Please pass --features config,kafka to cargo when trying this example.");
-
-        // Ok(())
     }
 }

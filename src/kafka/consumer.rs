@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
+use std::str::Utf8Error;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use opentelemetry::global;
-use opentelemetry::trace::TraceContextExt;
 use prost::DecodeError;
 use rdkafka::config::FromClientConfig;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
@@ -48,17 +48,6 @@ impl KafkaConfig {
     }
 }
 
-pub fn log_tid() {
-    println!(
-        "current_context: {:?}",
-        tracing::Span::current()
-            .context()
-            .span()
-            .span_context()
-            .trace_id()
-    );
-}
-
 #[async_trait]
 pub trait ConsumerExt<C = DefaultConsumerContext>: Consumer<C>
 where
@@ -69,7 +58,7 @@ where
         message: Result<BorrowedMessage<'_>, KafkaError>,
         process_fn: F,
         mode: CommitMode,
-    ) -> Result<(), Error>
+    ) -> Result<(), KakfaProcessError>
     where
         T: prost::Message + Default,
         F: Fn(T) -> Fut + Send + Sync,
@@ -77,27 +66,37 @@ where
         E: Display,
     {
         let message = message?;
-        let header = message.headers().unwrap();
-        println!("message header key {:?}", header.get(0).unwrap().0);
-        let traceparent = std::str::from_utf8(header.get(0).unwrap().1).unwrap();
-        let tracestate = std::str::from_utf8(header.get(1).unwrap().1).unwrap();
+        if let Some(header) = message.headers() {
+            let traceparent = std::str::from_utf8(
+                header
+                    .get(0)
+                    .ok_or_else(|| {
+                        KakfaProcessError::ParseHeaderError("header 0 not found".to_string())
+                    })?
+                    .1,
+            )?;
+            let tracestate = std::str::from_utf8(
+                header
+                    .get(1)
+                    .ok_or_else(|| {
+                        KakfaProcessError::ParseHeaderError("header 1 not found".to_string())
+                    })?
+                    .1,
+            )?;
 
-        let mut trace_metadata = HashMap::<String, String>::new();
-        trace_metadata.insert("traceparent".to_string(), traceparent.to_owned());
-        trace_metadata.insert("tracestate".to_string(), tracestate.to_owned());
+            let mut trace_metadata = HashMap::<String, String>::new();
+            trace_metadata.insert("traceparent".to_string(), traceparent.to_owned());
+            trace_metadata.insert("tracestate".to_string(), tracestate.to_owned());
 
-        let parent_cx = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
-        tracing::Span::current().set_parent(parent_cx);
-
-        log_tid();
-
-        println!("message header value {:?}", traceparent);
+            let parent_cx = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
+            tracing::Span::current().set_parent(parent_cx);
+        }
 
         let decoded_message = decode_protobuf::<T>(&message)?;
 
         process_fn(decoded_message)
             .await
-            .map_err(|err| Error::ProcessError(err.to_string()))?;
+            .map_err(|err| KakfaProcessError::ProcessError(err.to_string()))?;
 
         self.commit_message(&message, mode)?;
 
@@ -110,7 +109,7 @@ impl<C: ConsumerContext, R> ConsumerExt<C> for StreamConsumer<C, R> {}
 pub async fn process_protobuf<F, T, Fut, E>(
     message: Result<BorrowedMessage<'_>, KafkaError>,
     process_fn: F,
-) -> Result<(), Error>
+) -> Result<(), KakfaProcessError>
 where
     T: prost::Message + Default,
     F: Fn(T) -> Fut + Send + Sync,
@@ -123,12 +122,12 @@ where
 
     process_fn(decoded_message)
         .await
-        .map_err(|err| Error::ProcessError(err.to_string()))?;
+        .map_err(|err| KakfaProcessError::ProcessError(err.to_string()))?;
 
     Ok(())
 }
 
-pub fn process_error(error: Error) {
+pub fn process_error(error: KakfaProcessError) {
     warn!(
         "consume and process kafka message fail with error `{}`",
         error
@@ -136,23 +135,29 @@ pub fn process_error(error: Error) {
 }
 
 #[allow(clippy::unnecessary_lazy_evaluations)]
-fn decode_protobuf<T>(message: &BorrowedMessage<'_>) -> Result<T, Error>
+fn decode_protobuf<T>(message: &BorrowedMessage<'_>) -> Result<T, KakfaProcessError>
 where
     T: prost::Message + Default,
 {
-    let payload = message.payload().ok_or_else(|| Error::EmptyPayload)?;
+    let payload = message
+        .payload()
+        .ok_or_else(|| KakfaProcessError::EmptyPayload)?;
 
     Ok(T::decode(payload)?)
 }
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum KakfaProcessError {
     #[error("kafka error: {0}")]
     KafkaError(#[from] KafkaError),
     #[error("decode error: {0}")]
     DecodeError(#[from] DecodeError),
+    #[error("utf 8 error: {0}")]
+    Utf8Error(#[from] Utf8Error),
     #[error("No messages available right now")]
     EmptyPayload,
+    #[error("parse header error: {0}")]
+    ParseHeaderError(String),
     #[error("any error: {0}")]
     ProcessError(String),
 }

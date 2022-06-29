@@ -16,7 +16,6 @@ use super::KafkaConfig;
 pub use rdkafka::producer::{FutureProducer, FutureRecord};
 pub use rdkafka::util::Timeout;
 
-// #[derive(Debug)]
 pub struct KafkaAgent {
     pub kafka_config: KafkaConfig,
     pub kafka_future_producer: Option<FutureProducer>,
