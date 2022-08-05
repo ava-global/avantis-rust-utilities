@@ -3,7 +3,7 @@ on:
   - pull_request
 jobs:
   test:
-    runs-on: ubuntu-20.04
+    runs-on: buildjet-4vcpu-ubuntu-2004
     steps:
       - uses: actions/checkout@v2
         with:
@@ -40,7 +40,7 @@ jobs:
           fail_ci_if_error: true
 
   audit:
-    runs-on: ubuntu-20.04
+    runs-on: buildjet-4vcpu-ubuntu-2004
     steps:
       - uses: actions/checkout@v2
         with:
@@ -54,7 +54,7 @@ jobs:
           cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2022-0014
 
   lint: 
-    runs-on: ubuntu-20.04
+    runs-on: buildjet-4vcpu-ubuntu-2004
     steps:
       - uses: actions/checkout@v2
         with:
