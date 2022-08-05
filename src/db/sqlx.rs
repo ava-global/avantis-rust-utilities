@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use tracing::instrument;
 
 #[async_trait]
-trait SqlxDatabaseConfig {
+pub trait SqlxDatabaseConfig {
     async fn init_pool(&self) -> Result<Pool<Postgres>, Error>;
 }
 
