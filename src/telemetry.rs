@@ -18,7 +18,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Layer;
 use tracing_subscriber::{EnvFilter, Registry};
 
-#[derive(Deserialize, Clone, PartialEq, Debug)]
+#[derive(Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct TelemetrySetting {
     pub otel_collector_endpoint: String,
     pub disabled_targets: HashSet<String>,

@@ -50,7 +50,7 @@ impl KafkaConfig {
 
 pub fn set_trace(message: &BorrowedMessage) -> Result<(), KakfaProcessError> {
     if let Some(header) = message.headers() {
-        let traceparent = std::str::from_utf8(
+        let trace_parent = std::str::from_utf8(
             header
                 .get(0)
                 .ok_or_else(|| {
@@ -58,7 +58,7 @@ pub fn set_trace(message: &BorrowedMessage) -> Result<(), KakfaProcessError> {
                 })?
                 .1,
         )?;
-        let tracestate = std::str::from_utf8(
+        let trace_state = std::str::from_utf8(
             header
                 .get(1)
                 .ok_or_else(|| {
@@ -68,8 +68,8 @@ pub fn set_trace(message: &BorrowedMessage) -> Result<(), KakfaProcessError> {
         )?;
 
         let mut trace_metadata = HashMap::<String, String>::new();
-        trace_metadata.insert("traceparent".to_string(), traceparent.to_owned());
-        trace_metadata.insert("tracestate".to_string(), tracestate.to_owned());
+        trace_metadata.insert("traceparent".to_string(), trace_parent.to_owned());
+        trace_metadata.insert("tracestate".to_string(), trace_state.to_owned());
 
         let parent_cx = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
         tracing::Span::current().set_parent(parent_cx);

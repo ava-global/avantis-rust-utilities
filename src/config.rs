@@ -114,7 +114,7 @@ pub fn load_custom_config<'de, T: Deserialize<'de>>(
 /// Application environment. Affect configuration file loaded by [load_config].
 ///
 /// Any format listed in [config::FileFormat] can be used.
-#[derive(PartialEq, Debug, EnumString, strum::Display)]
+#[derive(PartialEq, Eq, Debug, EnumString, strum::Display)]
 pub enum Environment {
     /// Local environment. Will use `config/local.[FORMAT]`.
     #[strum(serialize = "local")]
