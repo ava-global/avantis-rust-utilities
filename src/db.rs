@@ -31,7 +31,7 @@ pub mod diesel;
 /// println!("{:?}", config);
 /// // initialize the pool by calling `config.init_pool().await?`
 /// ```
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct DatabaseConfig {
     pub host: String,
     pub user: String,

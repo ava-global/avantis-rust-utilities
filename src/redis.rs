@@ -235,7 +235,7 @@ mod connection {
     pub type Pool = bb8::Pool<RedisClusterConnectionManager>;
     pub type Connection = bb8::PooledConnection<'static, RedisClusterConnectionManager>;
 
-    #[derive(Clone, Debug, PartialEq, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     pub struct RedisConfig {
         pub hosts_csv: String,
         pub expire_seconds: usize,

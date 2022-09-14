@@ -6,7 +6,7 @@ use std::str::Utf8Error;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use opentelemetry::{Context, global};
+use opentelemetry::global;
 use prost::DecodeError;
 use rdkafka::config::FromClientConfig;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
@@ -71,7 +71,7 @@ pub fn set_trace(message: &BorrowedMessage) -> Result<(), KakfaProcessError> {
         trace_metadata.insert("traceparent".to_string(), trace_parent.to_owned());
         trace_metadata.insert("tracestate".to_string(), trace_state.to_owned());
 
-        let parent_cx: Context = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
+        let parent_cx = global::get_text_map_propagator(|prop| prop.extract(&trace_metadata));
         tracing::Span::current().set_parent(parent_cx);
     }
     Ok(())

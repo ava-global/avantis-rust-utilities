@@ -6,7 +6,7 @@ use std::ops::Deref;
 pub mod consumer;
 pub mod producer;
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct KafkaConfig {
     pub brokers_csv: String,
     pub flush_duration_millis: u64,
