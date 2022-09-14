@@ -24,7 +24,7 @@ impl DatabaseConfig {
     fn pool_options(&self) -> PgPoolOptions {
         PgPoolOptions::new()
             .max_connections(self.max_connections)
-            .connect_timeout(self.connection_timeout())
+            .acquire_timeout(self.connection_timeout())
     }
 }
 
