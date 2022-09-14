@@ -8,7 +8,7 @@ license = "MIT"
 name = "avantis-utils"
 readme = "README.md"
 repository = "https://github.com/ava-global/avantis-rust-utilities"
-version = "0.6.6"
+version = "0.7.0"
 
 [dependencies]
 itertools = {version = "0.10.3", optional = true}
