@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::anyhow;
 use anyhow::Error;
 use opentelemetry::global;
 use rdkafka::config::FromClientConfig;
@@ -19,27 +18,31 @@ pub use rdkafka::util::Timeout;
 pub fn with_trace_header(
     record: FutureRecord<'_, String, [u8]>,
 ) -> Result<FutureRecord<'_, String, [u8]>, Error> {
+    Ok(record.headers(create_tracing_header()))
+}
+
+fn create_tracing_header() -> OwnedHeaders {
     let cx = tracing::Span::current().context();
     let mut trace_metadata = HashMap::new();
     global::get_text_map_propagator(|propagator| {
         propagator.inject_context(&cx, &mut trace_metadata)
     });
 
-    Ok(record.headers(
-        OwnedHeaders::new()
-            .add(
-                "traceparent",
-                &trace_metadata
-                    .get("traceparent")
-                    .ok_or_else(|| anyhow!("trace metadata don't have traceparent"))?,
-            )
-            .add(
-                "tracestate",
-                &trace_metadata
-                    .get("tracestate")
-                    .ok_or_else(|| anyhow!("trace metadata don't have tracestate"))?,
-            ),
-    ))
+    let mut headers = OwnedHeaders::new();
+
+    if let Some(traceparent) = trace_metadata.get("traceparent") {
+        headers = headers.add("traceparent", traceparent);
+    } else {
+        warn!("trace metadata don't have traceparent");
+    }
+
+    if let Some(tracestate) = trace_metadata.get("tracestate") {
+        headers = headers.add("tracestate", tracestate);
+    } else {
+        warn!("trace metadata don't have tracestate");
+    }
+
+    headers
 }
 
 impl KafkaConfig {
