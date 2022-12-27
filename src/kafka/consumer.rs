@@ -95,7 +95,8 @@ where
         E: Display,
     {
         let message = message?;
-        set_trace(&message)?;
+
+        set_trace(&message).unwrap_or_else(|err| warn!("set trace fail with error `{}`", err));
 
         let decoded_message = decode_protobuf::<T>(&message)?;
 
