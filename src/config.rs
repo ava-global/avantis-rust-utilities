@@ -215,6 +215,8 @@ impl Default for Environment {
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
 
     #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -233,6 +235,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_load_config_success() {
         std::env::set_var("APP_DB__PASSWORD", "supersecurepassword");
 
@@ -274,6 +277,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_load_config_by_path_success() {
         std::env::set_var("APP_DB__PASSWORD", "supersecurepassword");
 
@@ -320,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     #[should_panic(expected = "configuration file \"config/staging\" not found")]
     fn test_load_config_file_not_found() {
         load_custom_config::<MyConfig>(
@@ -331,6 +336,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     #[should_panic(
         expected = "Unable to deserialize into config with type avantis_utils::config::tests::MyConfig with error: missing field"
     )]
@@ -344,6 +350,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_environment_from_env() {
         assert_eq!(Environment::Test, Environment::from_env().unwrap());
 
@@ -365,6 +372,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     #[should_panic(expected = "Unknown environment: staging")]
     fn test_environment_from_unknown_env() {
         std::env::set_var("APP_ENVIRONMENT_INVALID", "staging");
