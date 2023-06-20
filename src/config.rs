@@ -68,6 +68,41 @@ pub fn load_config<'de, T: Deserialize<'de>>(environment: Environment) -> Result
     load_custom_config(base_config_file, env_config_file, custom_env_vars)
 }
 
+/// Load config by path from selected [Environment] and [Path].
+/// Returns a Result containing config struct.
+/// Convenience [load_custom_config].
+///
+/// # Example
+///
+/// ```
+/// # use serde::Deserialize;
+/// # use avantis_utils::config::load_config_by_path;
+/// # use avantis_utils::config::Environment;
+/// #[derive(Clone, Debug, Deserialize, PartialEq)]
+/// struct MyConfig {
+///     log_level: String,
+/// }
+///
+/// fn main() {
+///     let config: MyConfig = load_config_by_path(Environment::Develop, "config").unwrap();
+///
+///     println!("{:?}", config);
+/// }
+/// ```
+pub fn load_config_by_path<'de, T: Deserialize<'de>>(
+    environment: Environment,
+    path: &str,
+) -> Result<T> {
+    let base_config_file = File::with_name(&format!("{}/base", path)).required(true);
+    let env_config_file = File::with_name(&format!("{}/{}", path, environment)).required(true);
+
+    let custom_env_vars = EnvironmentVariables::with_prefix("app")
+        .prefix_separator("_")
+        .separator("__");
+
+    load_custom_config(base_config_file, env_config_file, custom_env_vars)
+}
+
 /// Load config from custom sources.
 /// Returns a Result containing config struct.
 ///
@@ -180,6 +215,8 @@ impl Default for Environment {
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
 
     #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -198,6 +235,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_load_config_success() {
         std::env::set_var("APP_DB__PASSWORD", "supersecurepassword");
 
@@ -239,6 +277,54 @@ mod tests {
     }
 
     #[test]
+    #[serial]
+    fn test_load_config_by_path_success() {
+        std::env::set_var("APP_DB__PASSWORD", "supersecurepassword");
+
+        let expected = MyConfig {
+            log_level: "info".to_string(),
+            db: MyDbConfig {
+                host: "localhost".to_string(),
+                user: "username".to_string(),
+                password: "supersecurepassword".to_string(),
+                db_name: "my_db".to_string(),
+                max_connections: 30,
+            },
+        };
+
+        let actual = load_custom_config::<MyConfig>(
+            File::with_name("config-workspace/config/base").required(true),
+            File::with_name("config-workspace/config/develop").required(true),
+            EnvironmentVariables::with_prefix("app")
+                .prefix_separator("_")
+                .separator("__"),
+        )
+        .unwrap();
+
+        assert_eq!(expected, actual);
+
+        let actual =
+            load_config_by_path::<MyConfig>(Environment::Develop, "config-workspace/config")
+                .unwrap();
+
+        assert_eq!(expected, actual);
+
+        let actual =
+            load_config_by_path::<MyConfig>(Environment::Test, "config-workspace/config").unwrap();
+
+        assert_eq!(expected, actual);
+
+        let actual =
+            load_config_by_path::<MyConfig>(Environment::Production, "config-workspace/config")
+                .unwrap();
+
+        assert_eq!(expected, actual);
+
+        std::env::remove_var("APP_DB__PASSWORD");
+    }
+
+    #[test]
+    #[serial]
     #[should_panic(expected = "configuration file \"config/staging\" not found")]
     fn test_load_config_file_not_found() {
         load_custom_config::<MyConfig>(
@@ -250,6 +336,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     #[should_panic(
         expected = "Unable to deserialize into config with type avantis_utils::config::tests::MyConfig with error: missing field"
     )]
@@ -263,6 +350,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_environment_from_env() {
         assert_eq!(Environment::Test, Environment::from_env().unwrap());
 
@@ -284,6 +372,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     #[should_panic(expected = "Unknown environment: staging")]
     fn test_environment_from_unknown_env() {
         std::env::set_var("APP_ENVIRONMENT_INVALID", "staging");
